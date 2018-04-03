@@ -151,6 +151,19 @@ T fake_scan(T theta, vector<LineSegment<T>> & world) {
     return best_d;
 }
 
+template <class T=double>
+vector<double> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, double dx, double dy, double dtheta) {
+    vector<double> output;
+    for(int i=0; i < scan_count; i++) {
+        double scanner_theta = i * 2. * EIGEN_PI / 180;
+        double new_theta = scanner_theta + dtheta * i / scan_count;
+        double d = fake_scan<>(new_theta, world);
+        output.push_back(d);
+        cout << "scanner_theta: " << scanner_theta << " new theta: " << new_theta << " d: " << d << endl;
+    }
+    return output;
+}
+
 void test_fake_scan() {
     vector<LineSegment<double>> world;
     world.push_back(LineSegment<double>({0,1}, {1,1}));
@@ -159,10 +172,15 @@ void test_fake_scan() {
         double theta = i * EIGEN_PI / 180.;
         cout << "degrees: " << i <<  " d:" << fake_scan(theta, world) << endl;
     }
-
-
 }
 
+void test_scan_with_twist() {
+    vector<LineSegment<double>> world;
+    world.push_back(LineSegment<double>({0,1}, {1,1}));
+    world.push_back(LineSegment<double>({-10,2}, {10,2}));
+    scan_with_twist(world, 360, 0, 0, 30.*EIGEN_PI/180.);
+    
+}
 void test_intersection() {
     auto l1 = LineSegment<>({1,1},{2,2});
     auto l2 = LineSegment<>({0,1},{1,0});
@@ -198,5 +216,6 @@ int main(int, char**)
 
     test_intersection();
     test_fake_scan();
+    test_scan_with_twist();
     return 0;
 }
