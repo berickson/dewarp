@@ -23,14 +23,14 @@ public:
     }
 
     Eigen::Transform<double,2,Eigen::Affine> Pose2WorldTransform() {
-        Eigen::Rotation2D<double> rotate(theta);
-        Eigen::Translation<double,2> translate(x,y);
         Eigen::Transform<double,2,Eigen::Affine> t;
         t.setIdentity();
         t.rotate(theta);
         t.translate(Eigen::Vector2d(x,y));
-        //(rotate);
         return t;
+    }
+    Eigen::Transform<double,2,Eigen::Affine> World2PoseTransform() {
+        return Pose2WorldTransform().inverse();
     }
 };
 
@@ -44,14 +44,17 @@ int main(int, char**)
 {
     cout << "start" << endl;
     
-    Pose pose(0,0,M_PI);
-    Eigen::Vector2d p;
+    Pose pose(0,0,EIGEN_PI);
+    Eigen::Vector2d p,w,wp;
     p << 0,1;
     cout << "pose :" << to_string(pose) << endl;
     cout << "p :" << p << endl;
     cout << "world_p :" << pose.Pose2World(p) << endl;
     auto t = pose.Pose2WorldTransform();
-    cout << "transform_p :" << t*p << endl;
+    w = t*p;
+    cout << "transform_p :" << w << endl;
+    wp = pose.World2PoseTransform() * w;
+    cout << "untransform_p :" << wp << endl;
     //cout << "tranform :" << pose.Pose2WorldTransform() << endl;
     cout << "done" << endl;
     return 0;
