@@ -18,13 +18,9 @@ public:
     T theta;
 
     Pose() : x(0), y(0), theta(0) {
-
     }
-    Pose(Vector2T p, T theta) : x(p(0)), y(p(1)), theta(theta) {
-        x=p(0);
-        y=p(1);
-        theta=theta;
 
+    Pose(Vector2T p, T theta) : x(p(0)), y(p(1)), theta(theta) {
     }
 
     Pose move(Vector2T p, T dtheta) {
@@ -148,7 +144,7 @@ T sign_of(T v) {
 }
 
 template<class T=double>
-T fake_scan(Pose<T> & pose, T theta, vector<LineSegment<T>> & world) {
+T fake_scan(const Pose<T> & pose, T theta, const vector<LineSegment<T>> & world) {
     typedef Eigen::Matrix<T,2,1> Vector2T;
     T dx = cos(theta + pose.theta);
     T dy = sin(theta + pose.theta);
@@ -156,6 +152,9 @@ T fake_scan(Pose<T> & pose, T theta, vector<LineSegment<T>> & world) {
     T best_d = NAN;
     for( auto segment : world) {
         Vector2T p = segment.intersection(l);
+        if(isnan(p(0))) {
+            continue;
+        }
         p(0) -= pose.x;
         p(1) -= pose.y;
         if((sign_of(p(0))==sign_of(dx)) && (sign_of(p(1))==sign_of(dy))) {
@@ -184,35 +183,47 @@ vector<T> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, double
     return output;
 }
 
+void print_world(vector<LineSegment<double>> & world) {
+    for(auto segment : world) {
+        cout << segment.to_string() << endl;
+    }
+}
+
 template <class T=double>
 vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twist_theta) {
     typedef Eigen::Matrix<T,2,1> Vector2T;
     int count = twisted_readings.size();
+    cout << "count: " << count << endl;
     Pose<T> pose;
     vector<LineSegment<T>> world;
-    double scan_theta = 0;
     double inc_theta = 2.*EIGEN_PI / count;
     Vector2T p1;
+    p1 << NAN,NAN;
     Vector2T p2;
+    p2 << NAN,NAN;
     for(int i = 0; i < twisted_readings.size()+1; i++) {
+    //for(int i = 267; i < 273; i++) {
+        double scan_theta = (double) i / count * 2. * EIGEN_PI;
         double d1 = twisted_readings[i%count];
         p1 = p2;
         p2 = pose.Pose2World({cos(scan_theta)*d1, sin(scan_theta)*d1});
-        world.push_back(LineSegment<T>(p1, p2));
+        if(! isnan(p1(0)) && !isnan(p2(0))) {
+          world.push_back(LineSegment<T>(p1, p2));
+        }
         pose.move({twist_x/count, twist_y/count}, twist_theta/count);
-        scan_theta += inc_theta;
     }
 
-    for(auto world_segment : world) {
-        cout << world_segment.to_string() << endl;
-    }
+    cout << endl << endl <<  "untwist world" << endl;
+    print_world(world);
+
     vector<T> output;
 
     pose.x=0;
     pose.y=0;
     pose.theta=0;
     for(int i = 0; i < count; i++) {
-        output.push_back(fake_scan<T>(pose, inc_theta*i, world));
+        double scan_theta = (double) i / count * 2 * EIGEN_PI;
+        output.push_back(fake_scan<T>(pose, scan_theta, world));
     }
     return output;
 }
@@ -220,10 +231,10 @@ vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twis
 void test_fake_scan() {
     vector<double> scan;
     vector<LineSegment<double>> world;
+    world.push_back(LineSegment<double>({-10,2}, {10,2}));
     world.push_back(LineSegment<double>({-10,-2}, {10,-2}));
     Pose<double> pose;
     double d = fake_scan<double>(pose, 260*EIGEN_PI/180., world);
-    world.push_back(LineSegment<double>({-10,2}, {10,2}));
     for( int i = 0; i < 360; i++) {
         double theta = i * EIGEN_PI / 180.;
         double d = fake_scan<double>(pose, theta, world);
@@ -237,14 +248,16 @@ vector<LineSegment<double>> get_world() {
     world.push_back(LineSegment<double>({0,1}, {1,1}));
     world.push_back(LineSegment<double>({-10,2}, {10,2}));
     world.push_back(LineSegment<double>({-10,-3}, {10,-3}));
+    world.push_back(LineSegment<double>({10,2}, {10,-3}));
     return world;
 }
 
+
 void test_scan_with_twist() {
     auto world = get_world();
-    double twist_theta = 0;// 5.*EIGEN_PI/180.;
-    double twist_x = 0;
-    double twist_y = 0;
+    double twist_theta = 5.*EIGEN_PI/180.;
+    double twist_x = .2;
+    double twist_y = .1;
     double reading_count = 360;
     auto twisted = scan_with_twist(world, reading_count, twist_x, twist_y, twist_theta);
     auto untwisted = untwist_scan(twisted, twist_x, twist_y, twist_theta);
@@ -255,16 +268,27 @@ void test_scan_with_twist() {
 }
 
 void test_intersection() {
-    auto l1 = LineSegment<>({1,1},{2,2});
-    auto l2 = LineSegment<>({0,1},{1,0});
-    auto intersection = l1.intersection(l2);
-    cout << "intersection at:" << intersection << endl;
+    double dx = -2.89707;
+    double dy = -3;
+    Eigen::Vector2d v{dx,dy};
+    v = v/v.norm();
+    auto s = LineSegment<>({-2.89755,-3},{-2.89707,-3});
+    auto l = Line<double>::from_points({0,0},v);
+    auto p = s.intersection(l);
+    cout << "intersection at:" << p<< endl;
+    if((sign_of(p(0))==sign_of(dx)) && (sign_of(p(1))==sign_of(dy))) {
+    
+    cout << "signs ok";
+    }
 }
 
 int main(int, char**)
 {
-    test_fake_scan();
     test_scan_with_twist();
+    return 0;
+    test_intersection();
+
+    test_fake_scan();
     return 0;
     test_fake_scan();
     cout << "start" << endl;
@@ -291,6 +315,5 @@ int main(int, char**)
     auto line = Line<>::from_points({2,1},{3,2});
     cout << "line: " << line.a << ", " << line.b << ", " << line.c << endl;
 
-    test_intersection();
     return 0;
 }
