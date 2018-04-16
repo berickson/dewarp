@@ -27,7 +27,7 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}",
-                "${workspaceFolder}/eigen34",
+                "/usr/local/include/eigen3.3.4",
                 "/usr/include/c++/7",
                 "/usr/include/x86_64-linux-gnu/c++/7",
                 "/usr/include/c++/7/backward",

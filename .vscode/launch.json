@@ -8,7 +8,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/dewarp",
+            "program": "${workspaceFolder}/build/dewarp",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

@@ -158,7 +158,7 @@ T fake_scan(const Pose<T> & pose, T theta, const vector<LineSegment<T>> & world)
         p(0) -= pose.x;
         p(1) -= pose.y;
         if((sign_of(p(0))==sign_of(dx)) && (sign_of(p(1))==sign_of(dy))) {
-            double d = p.norm();
+            T d = p.norm();
             if(isnan(best_d)) {
                 best_d = d;
             } else {
@@ -171,12 +171,12 @@ T fake_scan(const Pose<T> & pose, T theta, const vector<LineSegment<T>> & world)
 }
 
 template <class T=double>
-vector<T> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, double twist_x, double twist_y, double twist_theta) {
+vector<T> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, T twist_x, T twist_y, T twist_theta) {
     vector<T> output;
     Pose<T> pose;
     for(int i=0; i < scan_count; i++) {
-        double scanner_theta = i * EIGEN_PI / 180;
-        double d = fake_scan<>(pose, scanner_theta, world);
+        T scanner_theta = i * EIGEN_PI / 180;
+        T d = fake_scan<>(pose, scanner_theta, world);
         output.push_back(d);
         pose.move({twist_x/scan_count, twist_y/scan_count}, twist_theta/scan_count);
     }
@@ -196,15 +196,15 @@ vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twis
     cout << "count: " << count << endl;
     Pose<T> pose;
     vector<LineSegment<T>> world;
-    double inc_theta = 2.*EIGEN_PI / count;
+    T inc_theta = 2.*EIGEN_PI / count;
     Vector2T p1;
     p1 << NAN,NAN;
     Vector2T p2;
     p2 << NAN,NAN;
     for(int i = 0; i < twisted_readings.size()+1; i++) {
     //for(int i = 267; i < 273; i++) {
-        double scan_theta = (double) i / count * 2. * EIGEN_PI;
-        double d1 = twisted_readings[i%count];
+        T scan_theta = (T) i / count * 2. * EIGEN_PI;
+        T d1 = twisted_readings[i%count];
         p1 = p2;
         p2 = pose.Pose2World({cos(scan_theta)*d1, sin(scan_theta)*d1});
         if(! isnan(p1(0)) && !isnan(p2(0))) {
@@ -222,7 +222,7 @@ vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twis
     pose.y=0;
     pose.theta=0;
     for(int i = 0; i < count; i++) {
-        double scan_theta = (double) i / count * 2 * EIGEN_PI;
+        T scan_theta = (T) i / count * 2 * EIGEN_PI;
         output.push_back(fake_scan<T>(pose, scan_theta, world));
     }
     return output;
@@ -284,6 +284,7 @@ void test_intersection() {
 
 int main(int, char**)
 {
+    cout << "newly compiled 4" << endl;
     test_scan_with_twist();
     return 0;
     test_intersection();

@@ -1,6 +1,10 @@
 {
     "files.associations": {
+        "*.C": "cpp",
         "iostream": "cpp",
-        "ostream": "cpp"
+        "ostream": "cpp",
+        "hash_map": "cpp",
+        "chrono": "cpp",
+        "algorithm": "cpp"
     }
 }

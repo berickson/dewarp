@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.0)
+project(dewarp)
+set(CMAKE_CXX_STANDARD 11)
+set(SOURCE dewarp.cpp)
+include_directories(/usr/local/include/eigen3.3.4)
+add_executable(${PROJECT_NAME} ${SOURCE})
