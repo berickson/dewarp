@@ -5,6 +5,7 @@
 #include <Eigen/Geometry>
 #include <iomanip>
 #include <vector>
+#include <functional>
 
 using namespace std;
 
@@ -144,7 +145,7 @@ T sign_of(T v) {
 }
 
 template<class T=double>
-T fake_scan(const Pose<T> & pose, T theta, const vector<LineSegment<T>> & world) {
+T fake_laser_reading(const Pose<T> & pose, T theta, const vector<LineSegment<T>> & world) {
     typedef Eigen::Matrix<T,2,1> Vector2T;
     T dx = cos(theta + pose.theta);
     T dy = sin(theta + pose.theta);
@@ -176,7 +177,7 @@ vector<T> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, T twis
     Pose<T> pose;
     for(int i=0; i < scan_count; i++) {
         T scanner_theta = i * EIGEN_PI / 180;
-        T d = fake_scan<>(pose, scanner_theta, world);
+        T d = fake_laser_reading<>(pose, scanner_theta, world);
         output.push_back(d);
         pose.move({twist_x/scan_count, twist_y/scan_count}, twist_theta/scan_count);
     }
@@ -185,7 +186,7 @@ vector<T> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, T twis
 
 void print_world(vector<LineSegment<double>> & world) {
     for(auto segment : world) {
-        cout << segment.to_string() << endl;
+        std::cout << segment.to_string() << endl;
     }
 }
 
@@ -223,7 +224,7 @@ vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twis
     pose.theta=0;
     for(int i = 0; i < count; i++) {
         T scan_theta = (T) i / count * 2 * EIGEN_PI;
-        output.push_back(fake_scan<T>(pose, scan_theta, world));
+        output.push_back(fake_laser_reading<T>(pose, scan_theta, world));
     }
     return output;
 }
@@ -234,10 +235,10 @@ void test_fake_scan() {
     world.push_back(LineSegment<double>({-10,2}, {10,2}));
     world.push_back(LineSegment<double>({-10,-2}, {10,-2}));
     Pose<double> pose;
-    double d = fake_scan<double>(pose, 260*EIGEN_PI/180., world);
+    double d = fake_laser_reading<double>(pose, 260*EIGEN_PI/180., world);
     for( int i = 0; i < 360; i++) {
         double theta = i * EIGEN_PI / 180.;
-        double d = fake_scan<double>(pose, theta, world);
+        double d = fake_laser_reading<double>(pose, theta, world);
         scan.push_back(d);
     }
     print_scan(scan);
@@ -282,8 +283,99 @@ void test_intersection() {
     }
 }
 
+template<class T>
+T scan_difference(vector<T> scan1, vector<T> scan2) {
+    double total_difference = 0;
+    size_t valid_count = 0;
+    for(unsigned i = 0; i < scan1.size(); i++) {
+        double d = scan1[i]-scan2[i];
+        if(!isnan(d)) {
+            total_difference += fabs(d);
+            valid_count++;
+        }
+    }
+    if(valid_count == 0) {
+        return NAN;
+    }
+    return total_difference / valid_count;
+}
+
+struct TwiddleResult{
+    vector<double> p;
+    double error;
+};
+
+double abs_sum(vector<double> & v) {
+    double rv = 0;
+    for(auto p : v) {
+        rv += fabs(p);
+    }
+}
+
+// based loosely on https://martin-thoma.com/twiddle/
+TwiddleResult twiddle(vector<double> guess, std::function<double(const vector<double>)> f, double threshold = 0.001) {
+    // Choose an initialization parameter vector
+    vector<double> p = guess;
+    // Define potential changes
+    auto dp = std::vector<double>(guess.size(), 1.0);
+    // Calculate the error
+    double best_err = f(p);
+
+    while(abs_sum(dp) > threshold) {
+        for(int i = 0; i< p.size(); i++) {
+            p[i] += dp[i];
+            double err = f(p);
+
+            if (err < best_err) {
+                best_err = err;
+                dp[i] *= 1.1;
+            } else {
+                // There was no improvement
+                p[i] -= 2*dp[i];  // Go into the other direction
+                err = f(p);
+
+                if (err < best_err) {
+                  // There was an improvement
+                    best_err = err;
+                    dp[i] *= 1.05;
+                } else  {
+                    // There was no improvement
+                    p[i] += dp[i];
+                    // As there was no improvement, the step size in either
+                    // direction, the step size might simply be too big.
+                    dp[i] /= 1.05;
+                }
+            }
+        }
+    }
+    TwiddleResult rv;
+    rv.p = p;
+    rv.error = best_err;
+    return rv;
+}
+
+void test_scan_difference() {
+    size_t n_points = 360;
+    auto world = get_world();
+    auto scan1 = scan_with_twist<double>(world, n_points, 0, 0, 0);
+    auto scan2 = scan_with_twist<double>(world, n_points, 0, 1, 0);
+
+    cout << scan_difference(scan1, scan2);
+}
+
+void test_twiddle() {
+    auto lambda = [](std::vector<double> v)->double{return fabs(v[0]-3)+fabs(v[1]-5) + fabs(v[2]);};
+    auto rv = twiddle({0,0,0}, lambda);
+    cout << rv.p[0] << ", " << rv.p[1] << ", " << rv.p[2] << " error: " << rv.error << endl;
+        
+}
+
 int main(int, char**)
 {
+    test_twiddle();
+    return 0;
+    test_scan_difference();
+    return 0;
     cout << "newly compiled 4" << endl;
     test_scan_with_twist();
     return 0;
