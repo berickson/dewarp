@@ -314,43 +314,44 @@ double abs_sum(vector<double> & v) {
 
 // based loosely on https://martin-thoma.com/twiddle/
 TwiddleResult twiddle(vector<double> guess, std::function<double(const vector<double>)> f, double threshold = 0.001) {
+    const double growth_rate = 1.5;
     // Choose an initialization parameter vector
     vector<double> p = guess;
     // Define potential changes
     auto dp = std::vector<double>(guess.size(), 0.2);
     // Calculate the error
-    double best_err = f(p);
+    double best_error = f(p);
 
     while(abs_sum(dp) > threshold) {
         for(int i = 0; i< p.size(); i++) {
             p[i] += dp[i];
-            double err = f(p);
+            double error = f(p);
 
-            if (err < best_err) {
-                best_err = err;
+            if (error < best_error) {
+                best_error = error;
                 dp[i] *= 1.1;
             } else {
                 // There was no improvement
                 p[i] -= 2*dp[i];  // Go into the other direction
-                err = f(p);
+                error = f(p);
 
-                if (err < best_err) {
+                if (error < best_error) {
                   // There was an improvement
-                    best_err = err;
-                    dp[i] *= 1.05;
+                    best_error = error;
+                    dp[i] *= growth_rate;
                 } else  {
                     // There was no improvement
                     p[i] += dp[i];
                     // As there was no improvement, the step size in either
                     // direction, the step size might simply be too big.
-                    dp[i] /= 1.05;
+                    dp[i] /= growth_rate;
                 }
             }
         }
     }
     TwiddleResult rv;
     rv.p = p;
-    rv.error = best_err;
+    rv.error = best_error;
     return rv;
 }
 
@@ -391,7 +392,7 @@ void test_scan_difference() {
     cout << scan_difference(scan1, scan2);
     auto matched_pose = match_scans(scan1, scan2);
 
-    cout << "match_scans: " << to_string(matched_pose);
+    cout << "match_scans: " << to_string(matched_pose) << endl;
 }
 
 void test_twiddle() {
