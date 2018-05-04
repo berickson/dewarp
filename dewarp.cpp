@@ -172,9 +172,9 @@ T fake_laser_reading(const Pose<T> & pose, T theta, const vector<LineSegment<T>>
 }
 
 template <class T=double>
-vector<T> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, T twist_x, T twist_y, T twist_theta) {
+vector<T> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
     vector<T> output;
-    Pose<T> pose;
+    Pose<T> pose = initial_pose;
     for(int i=0; i < scan_count; i++) {
         T scanner_theta = i * EIGEN_PI / 180;
         T d = fake_laser_reading<>(pose, scanner_theta, world);
@@ -191,11 +191,11 @@ void print_world(vector<LineSegment<double>> & world) {
 }
 
 template <class T=double>
-vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twist_theta) {
+vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
     typedef Eigen::Matrix<T,2,1> Vector2T;
     int count = twisted_readings.size();
-    cout << "count: " << count << endl;
-    Pose<T> pose;
+    //cout << "count: " << count << endl;
+    Pose<T> pose = initial_pose;
     vector<LineSegment<T>> world;
     T inc_theta = 2.*EIGEN_PI / count;
     Vector2T p1;
@@ -214,8 +214,8 @@ vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twis
         pose.move({twist_x/count, twist_y/count}, twist_theta/count);
     }
 
-    cout << endl << endl <<  "untwist world" << endl;
-    print_world(world);
+    //cout << endl << endl <<  "untwist world" << endl;
+    //print_world(world);
 
     vector<T> output;
 
@@ -283,7 +283,7 @@ void test_intersection() {
     }
 }
 
-template<class T>
+template<class T = double>
 T scan_difference(vector<T> scan1, vector<T> scan2) {
     double total_difference = 0;
     size_t valid_count = 0;
@@ -317,7 +317,7 @@ TwiddleResult twiddle(vector<double> guess, std::function<double(const vector<do
     // Choose an initialization parameter vector
     vector<double> p = guess;
     // Define potential changes
-    auto dp = std::vector<double>(guess.size(), 1.0);
+    auto dp = std::vector<double>(guess.size(), 0.2);
     // Calculate the error
     double best_err = f(p);
 
@@ -354,13 +354,44 @@ TwiddleResult twiddle(vector<double> guess, std::function<double(const vector<do
     return rv;
 }
 
+template <class T = double>
+Pose<T> match_scans(vector<double> scan1, vector<double> scan2) {
+    auto error_function = [&](vector<double> params){
+        Pose<T> pose;
+        pose.x = params[0];
+        pose.y = params[1];
+        pose.theta = params[2];
+        auto scan2b = untwist_scan(scan2,0.,0.,0.,pose);
+        double d = scan_difference(scan1, scan2b);
+        cout << "difference: " << d << " pose: " << to_string(pose) << endl;
+
+        return d;
+    };
+
+    TwiddleResult r = twiddle({0,0,0}, error_function);
+    Pose<T> match;
+    match.x = r.p[0];
+    match.y = r.p[1];
+    match.theta = r.p[2];
+    return match;
+}
+
 void test_scan_difference() {
     size_t n_points = 360;
     auto world = get_world();
-    auto scan1 = scan_with_twist<double>(world, n_points, 0, 0, 0);
-    auto scan2 = scan_with_twist<double>(world, n_points, 0, 1, 0);
+    Pose<double> pose1;
+    pose1.x = 0;
+    Pose<double> pose2;
+    pose2.x = .25;
+    pose2.y = -.75;
+    pose2.theta = .05;
+    auto scan1 = scan_with_twist<double>(world, n_points, 0, 0, 0, pose1);
+    auto scan2 = scan_with_twist<double>(world, n_points, 0, 0, 0, pose2);
 
     cout << scan_difference(scan1, scan2);
+    auto matched_pose = match_scans(scan1, scan2);
+
+    cout << "match_scans: " << to_string(matched_pose);
 }
 
 void test_twiddle() {
@@ -372,8 +403,8 @@ void test_twiddle() {
 
 int main(int, char**)
 {
-    test_twiddle();
-    return 0;
+    //test_twiddle();
+    //return 0;
     test_scan_difference();
     return 0;
     cout << "newly compiled 4" << endl;
