@@ -6,8 +6,38 @@
 #include <iomanip>
 #include <vector>
 #include <functional>
+#include <chrono>
+
+
+#define degrees2radians(theta) (EIGEN_PI / 180.)
 
 using namespace std;
+using namespace std::chrono;
+
+class Stopwatch {
+public:
+    time_point<system_clock> start_time;
+    duration<double> elapsed_time;
+    bool started = true;
+    void start() {
+        start_time = system_clock::now();
+        started = true;
+    }
+
+    void stop() {
+        if(started) {
+            elapsed_time += system_clock::now() - start_time;
+            started = false;
+        }
+    }
+
+    double get_elapsed_seconds() {
+        if(started) {
+            return (elapsed_time + system_clock::now() - start_time).count();
+        }
+        return elapsed_time.count();
+    }
+};
 
 template <class T=double>
 class Pose
@@ -190,8 +220,12 @@ void print_world(vector<LineSegment<double>> & world) {
     }
 }
 
+
+Stopwatch untwist_timer;
+
 template <class T=double>
 vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
+    untwist_timer.start();
     typedef Eigen::Matrix<T,2,1> Vector2T;
     int count = twisted_readings.size();
     //cout << "count: " << count << endl;
@@ -226,6 +260,7 @@ vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twis
         T scan_theta = (T) i / count * 2 * EIGEN_PI;
         output.push_back(fake_laser_reading<T>(pose, scan_theta, world));
     }
+    untwist_timer.stop();
     return output;
 }
 
@@ -314,12 +349,16 @@ double abs_sum(vector<double> & v) {
 
 // based loosely on https://martin-thoma.com/twiddle/
 TwiddleResult twiddle(vector<double> guess, std::function<double(const vector<double>)> f, double threshold = 0.001) {
-    const double growth_rate = 1.5;
-    // Choose an initialization parameter vector
+    
+    // initialize parameters to guess
     vector<double> p = guess;
-    // Define potential changes
+
+    // potential changes
     auto dp = std::vector<double>(guess.size(), 0.2);
-    // Calculate the error
+
+    // change growth rate
+    const double growth_rate = 1.5;
+
     double best_error = f(p);
 
     while(abs_sum(dp) > threshold) {
@@ -377,6 +416,55 @@ Pose<T> match_scans(vector<double> scan1, vector<double> scan2) {
     return match;
 }
 
+
+template <class T = double>
+struct ScanLine {
+    T theta;
+    T d;
+};
+
+
+template <class T = double>
+vector<ScanLine<T>> move_scan(vector<T> scan, Pose<T> pose) {
+    typedef Eigen::Matrix<T,2,1> Vector2T;
+    Vector2T p, p_new;
+    T radians_resolution = 2. * EIGEN_PI / scan.size();
+    auto transform = pose.Pose2WorldTransform();
+    
+    for(int i = 0; i < scan.size(); i++) {
+        double theta = i * radians_resolution;
+        double d = scan[i];
+        p << d * cos(theta), d * sin(theta);
+        p_new = transform * p;
+    }
+
+}
+
+template <class T = double>
+Pose<T> match_scans2(vector<double> scan1, vector<double> scan2) {
+    auto error_function = [&](vector<double> params){
+        Pose<T> pose;
+        pose.x = params[0];
+        pose.y = params[1];
+        pose.theta = params[2];
+
+        auto scan2b = move_scan(scan2, pose);
+        double d = scan_difference2(scan1, scan2b);
+        cout << "difference: " << d << " pose: " << to_string(pose) << endl;
+
+        return d;
+    };
+
+    TwiddleResult r = twiddle({0,0,0}, error_function);
+    Pose<T> match;
+    match.x = r.p[0];
+    match.y = r.p[1];
+    match.theta = r.p[2];
+    return match;
+}
+
+
+
 void test_scan_difference() {
     size_t n_points = 360;
     auto world = get_world();
@@ -407,6 +495,7 @@ int main(int, char**)
     //test_twiddle();
     //return 0;
     test_scan_difference();
+    cout << "time untwisting: " << untwist_timer.get_elapsed_seconds();
     return 0;
     cout << "newly compiled 4" << endl;
     test_scan_with_twist();
