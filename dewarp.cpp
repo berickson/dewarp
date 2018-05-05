@@ -8,17 +8,18 @@
 #include <functional>
 #include <chrono>
 
-
-#define degrees2radians(theta) (EIGEN_PI / 180.)
+#define degrees2radians(theta) ((theta) * EIGEN_PI / 180.)
+#define radians2degrees(theta) ((theta) * 180. / EIGEN_PI)
 
 using namespace std;
 using namespace std::chrono;
 
+
 class Stopwatch {
 public:
     time_point<system_clock> start_time;
-    duration<double> elapsed_time;
-    bool started = true;
+    duration<double> elapsed_time = duration<double>::zero();
+    bool started = false;
     void start() {
         start_time = system_clock::now();
         started = true;
@@ -38,6 +39,7 @@ public:
         return elapsed_time.count();
     }
 };
+
 
 template <class T=double>
 class Pose
@@ -82,6 +84,14 @@ public:
     }
 };
 
+
+template <class T = double>
+struct ScanLine {
+    T theta = NAN;
+    T d = NAN;
+};
+
+
 std::string to_string(Pose<> & pose) {
     stringstream ss;
     ss << std::fixed << std::setprecision(2) << pose.x << ", " << pose.y << ", " << pose.theta;
@@ -94,10 +104,9 @@ void print_scan(vector<T> scan) {
     double dtheta = 2 * EIGEN_PI / scan.size();
     cout << "degrees, d, px, py" << endl;
     for(auto d : scan) {
-        double degrees = theta * 180/EIGEN_PI;
         double px = d*cos(theta);
         double py = d*sin(theta);
-        cout << degrees << ", " << d << ", " << px << ", " << py << endl;
+        cout << radians2degrees(theta) << ", " << d << ", " << px << ", " << py << endl;
         theta += dtheta;
     }
 }
@@ -197,7 +206,7 @@ T fake_laser_reading(const Pose<T> & pose, T theta, const vector<LineSegment<T>>
             }
         }
     }
-    
+
     return best_d;
 }
 
@@ -213,6 +222,24 @@ vector<T> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, T twis
     }
     return output;
 }
+
+
+template <class T=double>
+vector<ScanLine<T>> scan_with_twist2(vector<LineSegment<T>> & world, int scan_count, Pose<T> initial_pose = Pose<T>(), T twist_x = 0, T twist_y = 0, T twist_theta = 0) {
+    vector<ScanLine<T>> output;
+    Pose<T> pose = initial_pose;
+    for(int i=0; i < scan_count; i++) {
+        T scanner_theta = i * EIGEN_PI / 180;
+        T d = fake_laser_reading<>(pose, scanner_theta, world);
+        ScanLine<T> scan_line;
+        scan_line.theta = scanner_theta;
+        scan_line.d = d;
+        output.push_back(scan_line);
+        pose.move({twist_x/scan_count, twist_y/scan_count}, twist_theta/scan_count);
+    }
+    return output;
+}
+
 
 void print_world(vector<LineSegment<double>> & world) {
     for(auto segment : world) {
@@ -417,27 +444,30 @@ Pose<T> match_scans(vector<double> scan1, vector<double> scan2) {
 }
 
 
-template <class T = double>
-struct ScanLine {
-    T theta;
-    T d;
-};
 
 
 template <class T = double>
-vector<ScanLine<T>> move_scan(vector<T> scan, Pose<T> pose) {
+vector<ScanLine<T>> move_scan(vector<ScanLine<T>> scan, Pose<T> pose) {
     typedef Eigen::Matrix<T,2,1> Vector2T;
     Vector2T p, p_new;
     T radians_resolution = 2. * EIGEN_PI / scan.size();
     auto transform = pose.Pose2WorldTransform();
-    
-    for(int i = 0; i < scan.size(); i++) {
-        double theta = i * radians_resolution;
-        double d = scan[i];
-        p << d * cos(theta), d * sin(theta);
-        p_new = transform * p;
-    }
 
+    vector<ScanLine<T>> moved_scan;
+    
+    for(auto & scan_line : scan) {
+        double theta = scan_line.theta;
+        double d = scan_line.d;
+        ScanLine<T> moved_scan_line;
+        if(!isnan(d)) {
+            p << d * cos(theta), d * sin(theta);
+            p_new = transform * p;
+            moved_scan_line.theta = atan2(p_new(1), p_new(0));
+            moved_scan_line.d = sqrt(p_new(1)*p_new(1)+p_new(0)*p_new(0));
+        }
+        moved_scan.push_back(moved_scan_line);
+    }
+    return moved_scan;
 }
 
 template <class T = double>
@@ -490,12 +520,33 @@ void test_twiddle() {
         
 }
 
+void test_move_scan() {
+    auto world = get_world();
+    Pose<double> pose1;
+    pose1.x = 0;
+    pose1.y = 0;
+    pose1.theta = 0;
+    Pose<double> pose2;
+    pose2.x = .0;
+    pose2.y = 0;
+    pose2.theta = degrees2radians(1);
+    auto scan1 = scan_with_twist2<double>(world, 360, pose1);
+    auto scan2 = move_scan(scan1, pose2);
+    cout << "original scan, moved scan" << endl;
+    for(unsigned i = 0; i < scan2.size(); i++) {
+        cout << radians2degrees(scan1[i].theta) << " " << scan1[i].d 
+             << " -> "  
+             << radians2degrees(scan2[i].theta) << " " << scan2[i].d << endl;
+    }
+}
+
 int main(int, char**)
 {
+    test_move_scan();
     //test_twiddle();
     //return 0;
-    test_scan_difference();
-    cout << "time untwisting: " << untwist_timer.get_elapsed_seconds();
+    //test_scan_difference();
+    cout << "time untwisting: " << untwist_timer.get_elapsed_seconds() << endl;
     return 0;
     cout << "newly compiled 4" << endl;
     test_scan_with_twist();
