@@ -24,5 +24,8 @@ I use these plugins:
 
 I've only tried it with GCC 5.4.1 / linux and it probably needs modifications to work in other environments.
 
+**Optimizations**
+I was using Eigen vectors for 2d points.  It is way faster to just pass structs around.
+
 
 

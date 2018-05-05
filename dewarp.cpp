@@ -14,6 +14,11 @@
 using namespace std;
 using namespace std::chrono;
 
+struct Point2d {
+    double x;
+    double y;
+};
+
 
 class Stopwatch {
 public:
@@ -44,16 +49,30 @@ public:
 template <class T=double>
 class Pose
 {
-public:
+private:
     typedef Eigen::Matrix<T,2,1> Vector2T;
     T x;
     T y;
     T theta;
+    T cos_theta;
+    T sin_theta;
 
-    Pose() : x(0), y(0), theta(0) {
+public:
+    inline T get_x() const { return x; }
+    inline T get_y()  const { return y; }
+    inline T get_theta()  const { return theta; }
+
+    void update_trig() {
+        cos_theta = cos(theta);
+        sin_theta = sin(theta);
+    }
+
+    Pose(T x = 0.0, T y=0.0, T theta = 0.0) : x(x), y(y), theta(theta) {
+        update_trig();
     }
 
     Pose(Vector2T p, T theta) : x(p(0)), y(p(1)), theta(theta) {
+        update_trig();
     }
 
     Pose move(Vector2T p, T dtheta) {
@@ -61,12 +80,24 @@ public:
         x = w(0);
         y = w(1);
         theta += dtheta;
+
+        update_trig();
+    }
+
+    void  Pose2World(const Point2d & p, Point2d & rv) const {
+        rv.x = p.x * cos_theta - p.y * sin_theta + x;
+        rv.y = p.x * sin_theta + p.y * cos_theta + y;
+    }
+
+
+    void  Pose2World(const Eigen::Vector2d & p, Eigen::Vector2d & rv) const {
+        rv(0) = p(0) * cos_theta - p(1) * sin_theta + x;
+        rv(1) = p(0) * sin_theta + p(1) * cos_theta + y;
     }
 
     Vector2T Pose2World(Eigen::Vector2d p) const {
         Vector2T rv;
-        rv(0) = p(0) * cos(theta) - p(1) * sin(theta) + x;
-        rv(1) = p(0) * sin(theta) + p(1) * cos(theta) + y;
+        Pose2World(p,rv);
 
         return rv;
     }
@@ -87,6 +118,9 @@ public:
 
 template <class T = double>
 struct ScanLine {
+    ScanLine(T theta = NAN, T d = NAN) : theta(theta), d(d) {
+    }
+
     T theta = NAN;
     T d = NAN;
 };
@@ -94,20 +128,18 @@ struct ScanLine {
 
 std::string to_string(Pose<> & pose) {
     stringstream ss;
-    ss << std::fixed << std::setprecision(2) << pose.x << ", " << pose.y << ", " << pose.theta;
+    ss << std::fixed << std::setprecision(2) << pose.get_x() << ", " << pose.get_y() << ", " << pose.get_theta();
     return ss.str();
 }
 
 template <class T>
-void print_scan(vector<T> scan) {
-    double theta = 0;
-    double dtheta = 2 * EIGEN_PI / scan.size();
+void print_scan(vector<ScanLine<T>> scan) {
     cout << "degrees, d, px, py" << endl;
-    for(auto d : scan) {
-        double px = d*cos(theta);
-        double py = d*sin(theta);
-        cout << radians2degrees(theta) << ", " << d << ", " << px << ", " << py << endl;
-        theta += dtheta;
+    for(auto s : scan) {
+        double theta = s.theta;
+        double px = s.d*cos(theta);
+        double py = s.d*sin(theta);
+        cout << radians2degrees(s.theta) << ", " << s.d << ", " << px << ", " << py << endl;
     }
 }
 
@@ -125,9 +157,9 @@ class Line {
     T b;
     T c;
 
-   static Line<T> from_points(Vector2T p1, Vector2T p2) {
-       auto h1 = Vector3T(p1(0),p1(1),1);      
-       auto h2 = Vector3T(p2(0),p2(1),1);
+   static Line<T> from_points(const Point2d & p1, const Point2d & p2) {
+       auto h1 = Vector3T(p1.x,p1.y,1);      
+       auto h2 = Vector3T(p2.x,p2.y,1);
        auto l = h1.cross(h2);
        Line line;
        line.a = l(0);
@@ -149,12 +181,12 @@ template <class T=double>
 class LineSegment {
     typedef Eigen::Matrix<T,2,1> Vector2T;
     public:
-    Vector2T p1;
-    Vector2T p2;
-    LineSegment(Vector2T p1, Vector2T p2) : p1(p1), p2(p2) {      
+    Point2d p1;
+    Point2d p2;
+    LineSegment(Point2d p1, Point2d p2) : p1(p1), p2(p2) {      
     }
 
-    Vector2T intersection(LineSegment s2) {
+    Point2d intersection(LineSegment & s2) {
         auto l2 = Line<T>::from_points(s2.p1, s2.p2);
         return intersection(l2);
     }
@@ -162,7 +194,7 @@ class LineSegment {
     Vector2T intersection(Line<T> l2) {
         auto l1 = Line<T>::from_points(p1,p2);
         Vector2T p = l1.intersection(l2);
-        if(is_between(p(0),p1(0),p2(0))) {
+        if(is_between(p(0),p1.x,p2.x)) {
             return p;
         } else {
             return Vector2T(NAN, NAN);
@@ -170,7 +202,7 @@ class LineSegment {
     }
     std::string to_string() {
         stringstream ss;
-        ss << "(" << p1(0) << "," << p1(1)<< ")-(" << p2(0) << "," << p2(1) << ")";
+        ss << "(" << p1.x << "," << p1.y<< ")-(" << p2.x << "," << p2.y << ")";
         return ss.str(); 
     }
 };
@@ -186,17 +218,17 @@ T sign_of(T v) {
 template<class T=double>
 T fake_laser_reading(const Pose<T> & pose, T theta, const vector<LineSegment<T>> & world) {
     typedef Eigen::Matrix<T,2,1> Vector2T;
-    T dx = cos(theta + pose.theta);
-    T dy = sin(theta + pose.theta);
-    auto l = Line<T>::from_points({pose.x,pose.y},{pose.x+dx,pose.y+dy});
+    T dx = cos(theta + pose.get_theta());
+    T dy = sin(theta + pose.get_theta());
+    auto l = Line<T>::from_points({pose.get_x(),pose.get_y()},{pose.get_x()+dx,pose.get_y()+dy});
     T best_d = NAN;
     for( auto segment : world) {
         Vector2T p = segment.intersection(l);
         if(isnan(p(0))) {
             continue;
         }
-        p(0) -= pose.x;
-        p(1) -= pose.y;
+        p(0) -= pose.get_x();
+        p(1) -= pose.get_y();
         if((sign_of(p(0))==sign_of(dx)) && (sign_of(p(1))==sign_of(dy))) {
             T d = p.norm();
             if(isnan(best_d)) {
@@ -211,13 +243,13 @@ T fake_laser_reading(const Pose<T> & pose, T theta, const vector<LineSegment<T>>
 }
 
 template <class T=double>
-vector<T> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
-    vector<T> output;
+vector<ScanLine<T>> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
+    vector<ScanLine<T>> output;
     Pose<T> pose = initial_pose;
     for(int i=0; i < scan_count; i++) {
-        T scanner_theta = i * EIGEN_PI / 180;
+        T scanner_theta = 2*EIGEN_PI * i / scan_count;;
         T d = fake_laser_reading<>(pose, scanner_theta, world);
-        output.push_back(d);
+        output.push_back({scanner_theta, d});
         pose.move({twist_x/scan_count, twist_y/scan_count}, twist_theta/scan_count);
     }
     return output;
@@ -229,7 +261,7 @@ vector<ScanLine<T>> scan_with_twist2(vector<LineSegment<T>> & world, int scan_co
     vector<ScanLine<T>> output;
     Pose<T> pose = initial_pose;
     for(int i=0; i < scan_count; i++) {
-        T scanner_theta = i * EIGEN_PI / 180;
+        T scanner_theta = (2. * EIGEN_PI) * i / scan_count;
         T d = fake_laser_reading<>(pose, scanner_theta, world);
         ScanLine<T> scan_line;
         scan_line.theta = scanner_theta;
@@ -249,59 +281,53 @@ void print_world(vector<LineSegment<double>> & world) {
 
 
 Stopwatch untwist_timer;
+Stopwatch move_scan_timer;
 
 template <class T=double>
-vector<T> untwist_scan(vector<T> &twisted_readings, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
+vector<ScanLine<T>> untwist_scan(vector<ScanLine<T>> &twisted_readings, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
     untwist_timer.start();
-    typedef Eigen::Matrix<T,2,1> Vector2T;
+    //typedef Eigen::Matrix<T,2,1> Vector2T;
     int count = twisted_readings.size();
     //cout << "count: " << count << endl;
     Pose<T> pose = initial_pose;
     vector<LineSegment<T>> world;
     T inc_theta = 2.*EIGEN_PI / count;
-    Vector2T p1;
-    p1 << NAN,NAN;
-    Vector2T p2;
-    p2 << NAN,NAN;
+    Point2d p1 = {NAN, NAN};
+    Point2d p2 = {NAN, NAN};
     for(int i = 0; i < twisted_readings.size()+1; i++) {
-    //for(int i = 267; i < 273; i++) {
         T scan_theta = (T) i / count * 2. * EIGEN_PI;
-        T d1 = twisted_readings[i%count];
-        p1 = p2;
-        p2 = pose.Pose2World({cos(scan_theta)*d1, sin(scan_theta)*d1});
-        if(! isnan(p1(0)) && !isnan(p2(0))) {
+        T d1 = twisted_readings[i%count].d;
+        p1=p2;
+        pose.Pose2World({cos(scan_theta)*d1, sin(scan_theta)*d1}, p2);
+        if(! isnan(p1.x) && !isnan(p2.x)) {
           world.push_back(LineSegment<T>(p1, p2));
         }
         pose.move({twist_x/count, twist_y/count}, twist_theta/count);
     }
 
-    //cout << endl << endl <<  "untwist world" << endl;
-    //print_world(world);
 
-    vector<T> output;
+    vector<ScanLine<T>> output;
 
-    pose.x=0;
-    pose.y=0;
-    pose.theta=0;
+    Pose<T> pose2(0,0,0);
     for(int i = 0; i < count; i++) {
         T scan_theta = (T) i / count * 2 * EIGEN_PI;
-        output.push_back(fake_laser_reading<T>(pose, scan_theta, world));
+        output.push_back(ScanLine<T>(scan_theta, fake_laser_reading<T>(pose2, scan_theta, world)));
     }
     untwist_timer.stop();
     return output;
 }
 
 void test_fake_scan() {
-    vector<double> scan;
+    vector<ScanLine<double>> scan;
     vector<LineSegment<double>> world;
     world.push_back(LineSegment<double>({-10,2}, {10,2}));
     world.push_back(LineSegment<double>({-10,-2}, {10,-2}));
     Pose<double> pose;
-    double d = fake_laser_reading<double>(pose, 260*EIGEN_PI/180., world);
     for( int i = 0; i < 360; i++) {
-        double theta = i * EIGEN_PI / 180.;
+        double theta = degrees2radians(i);
         double d = fake_laser_reading<double>(pose, theta, world);
-        scan.push_back(d);
+        ScanLine<double> s = {theta,d};
+        scan.push_back(s);
     }
     print_scan(scan);
 }
@@ -318,11 +344,12 @@ vector<LineSegment<double>> get_world() {
 
 void test_scan_with_twist() {
     auto world = get_world();
-    double twist_theta = 5.*EIGEN_PI/180.;
+    double twist_theta = degrees2radians(5);
     double twist_x = .2;
     double twist_y = .1;
     double reading_count = 360;
-    auto twisted = scan_with_twist(world, reading_count, twist_x, twist_y, twist_theta);
+    Pose<double> pose1;
+    auto twisted = scan_with_twist2(world, reading_count, pose1, twist_x, twist_y, twist_theta);
     auto untwisted = untwist_scan(twisted, twist_x, twist_y, twist_theta);
     cout << endl << endl << "twisted scan" << endl;
     print_scan(twisted);
@@ -336,7 +363,7 @@ void test_intersection() {
     Eigen::Vector2d v{dx,dy};
     v = v/v.norm();
     auto s = LineSegment<>({-2.89755,-3},{-2.89707,-3});
-    auto l = Line<double>::from_points({0,0},v);
+    auto l = Line<double>::from_points({0,0},{v(0), v(1)});
     auto p = s.intersection(l);
     cout << "intersection at:" << p<< endl;
     if((sign_of(p(0))==sign_of(dx)) && (sign_of(p(1))==sign_of(dy))) {
@@ -346,11 +373,11 @@ void test_intersection() {
 }
 
 template<class T = double>
-T scan_difference(vector<T> scan1, vector<T> scan2) {
+T scan_difference(vector<ScanLine<T>> scan1, vector<ScanLine<T>> scan2) {
     double total_difference = 0;
     size_t valid_count = 0;
     for(unsigned i = 0; i < scan1.size(); i++) {
-        double d = scan1[i]-scan2[i];
+        double d = scan1[i].d-scan2[i].d;
         if(!isnan(d)) {
             total_difference += fabs(d);
             valid_count++;
@@ -372,6 +399,7 @@ double abs_sum(vector<double> & v) {
     for(auto p : v) {
         rv += fabs(p);
     }
+    return rv;
 }
 
 // based loosely on https://martin-thoma.com/twiddle/
@@ -415,6 +443,7 @@ TwiddleResult twiddle(vector<double> guess, std::function<double(const vector<do
             }
         }
     }
+    cout << "twiddle done" << endl;
     TwiddleResult rv;
     rv.p = p;
     rv.error = best_error;
@@ -422,13 +451,12 @@ TwiddleResult twiddle(vector<double> guess, std::function<double(const vector<do
 }
 
 template <class T = double>
-Pose<T> match_scans(vector<double> scan1, vector<double> scan2) {
-    auto error_function = [&](vector<double> params){
-        Pose<T> pose;
-        pose.x = params[0];
-        pose.y = params[1];
-        pose.theta = params[2];
+Pose<T> match_scans(vector<ScanLine<double>> scan1, vector<ScanLine<double>> scan2) {
+    auto error_function = [&scan1, &scan2](vector<double> params){
+        Pose<T> pose(params[0], params[1], params[2]);
         auto scan2b = untwist_scan(scan2,0.,0.,0.,pose);
+        //cout << "scan2b:" << endl;
+        //print_scan(scan2b);
         double d = scan_difference(scan1, scan2b);
         cout << "difference: " << d << " pose: " << to_string(pose) << endl;
 
@@ -436,37 +464,37 @@ Pose<T> match_scans(vector<double> scan1, vector<double> scan2) {
     };
 
     TwiddleResult r = twiddle({0,0,0}, error_function);
-    Pose<T> match;
-    match.x = r.p[0];
-    match.y = r.p[1];
-    match.theta = r.p[2];
+    Pose<T> match(r.p[0], r.p[1], r.p[2]);
     return match;
 }
 
 
 
-
 template <class T = double>
-vector<ScanLine<T>> move_scan(vector<ScanLine<T>> scan, Pose<T> pose) {
+vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, Pose<T> pose) {
+    move_scan_timer.start();
     typedef Eigen::Matrix<T,2,1> Vector2T;
-    Vector2T p, p_new;
-    T radians_resolution = 2. * EIGEN_PI / scan.size();
+    Point2d p, p_new;
     auto transform = pose.Pose2WorldTransform();
 
     vector<ScanLine<T>> moved_scan;
+    //moved_scan.reserve(scan.size());
     
     for(auto & scan_line : scan) {
         double theta = scan_line.theta;
         double d = scan_line.d;
         ScanLine<T> moved_scan_line;
         if(!isnan(d)) {
-            p << d * cos(theta), d * sin(theta);
-            p_new = transform * p;
-            moved_scan_line.theta = atan2(p_new(1), p_new(0));
-            moved_scan_line.d = sqrt(p_new(1)*p_new(1)+p_new(0)*p_new(0));
+            p.x = d * cos(theta);
+            p.y = d * sin(theta);
+            pose.Pose2World(p, p_new);
+            // p_new =  transform * p;  // todo: Transform is slowest part, make faster
+            moved_scan_line.theta = atan2(p_new.y, p_new.x);
+            moved_scan_line.d = sqrt(p_new.y*p_new.y+p_new.x*p_new.x);
         }
-        moved_scan.push_back(moved_scan_line);
+        //moved_scan.push_back(moved_scan_line);
     }
+    move_scan_timer.stop();
     return moved_scan;
 }
 
@@ -499,11 +527,7 @@ void test_scan_difference() {
     size_t n_points = 360;
     auto world = get_world();
     Pose<double> pose1;
-    pose1.x = 0;
-    Pose<double> pose2;
-    pose2.x = .25;
-    pose2.y = -.75;
-    pose2.theta = .05;
+    Pose<double> pose2(.25, -.75, .05);
     auto scan1 = scan_with_twist<double>(world, n_points, 0, 0, 0, pose1);
     auto scan2 = scan_with_twist<double>(world, n_points, 0, 0, 0, pose2);
 
@@ -523,62 +547,31 @@ void test_twiddle() {
 void test_move_scan() {
     auto world = get_world();
     Pose<double> pose1;
-    pose1.x = 0;
-    pose1.y = 0;
-    pose1.theta = 0;
-    Pose<double> pose2;
-    pose2.x = .0;
-    pose2.y = 0;
-    pose2.theta = degrees2radians(1);
+    Pose<double> pose2(0,0,degrees2radians(1));
     auto scan1 = scan_with_twist2<double>(world, 360, pose1);
     auto scan2 = move_scan(scan1, pose2);
-    cout << "original scan, moved scan" << endl;
-    for(unsigned i = 0; i < scan2.size(); i++) {
-        cout << radians2degrees(scan1[i].theta) << " " << scan1[i].d 
-             << " -> "  
-             << radians2degrees(scan2[i].theta) << " " << scan2[i].d << endl;
+    if(0) {
+        cout << "original scan, moved scan" << endl;
+        for(unsigned i = 0; i < scan2.size(); i++) {
+            cout << radians2degrees(scan1[i].theta) << " " << scan1[i].d 
+                << " -> "  
+                << radians2degrees(scan2[i].theta) << " " << scan2[i].d << endl;
+        }
     }
 }
 
 int main(int, char**)
 {
-    test_move_scan();
+    //for(int i = 0; i < 100; ++i) test_move_scan();
     //test_twiddle();
     //return 0;
-    //test_scan_difference();
+    test_scan_difference();
+    //test_scan_with_twist();
+    //test_intersection();
+    // test_fake_scan();
+
     cout << "time untwisting: " << untwist_timer.get_elapsed_seconds() << endl;
+    cout << "time moving: " << move_scan_timer.get_elapsed_seconds() << endl;
     return 0;
-    cout << "newly compiled 4" << endl;
-    test_scan_with_twist();
-    return 0;
-    test_intersection();
 
-    test_fake_scan();
-    return 0;
-    test_fake_scan();
-    cout << "start" << endl;
-    
-    Pose<> pose({0, 0}, EIGEN_PI);
-    Eigen::Vector2d p(0,1), w, wp;
-
-    cout << "pose :" << to_string(pose) << endl;
-    cout << "p :" << p << endl;
-    cout << "world_p :" << pose.Pose2World(p) << endl;
-    auto t = pose.Pose2WorldTransform();
-    w = t*p;
-    cout << "transform_p :" << w << endl;
-    wp = pose.World2PoseTransform() * w;
-    cout << "untransform_p :" << wp << endl;
-    cout << "done" << endl;
-
-    Pose<> p2;
-    for(int i = 0; i < 11; i++) {
-        cout << "i:" << i << " pose: " << to_string(p2) << endl;
-        p2.move({1, 0}, 2. * EIGEN_PI / 10.);
-    }
-
-    auto line = Line<>::from_points({2,1},{3,2});
-    cout << "line: " << line.a << ", " << line.b << ", " << line.c << endl;
-
-    return 0;
 }

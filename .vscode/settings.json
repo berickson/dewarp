@@ -5,6 +5,8 @@
         "ostream": "cpp",
         "hash_map": "cpp",
         "chrono": "cpp",
-        "algorithm": "cpp"
+        "algorithm": "cpp",
+        "*.ipp": "cpp",
+        "core": "cpp"
     }
 }
