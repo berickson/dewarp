@@ -373,7 +373,7 @@ void test_intersection() {
 }
 
 template<class T = double>
-T scan_difference(vector<ScanLine<T>> scan1, vector<ScanLine<T>> scan2) {
+T scan_difference(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> & scan2) {
     double total_difference = 0;
     size_t valid_count = 0;
     for(unsigned i = 0; i < scan1.size(); i++) {
