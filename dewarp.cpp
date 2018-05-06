@@ -75,7 +75,7 @@ public:
         update_trig();
     }
 
-    Pose move(Vector2T p, T dtheta) {
+    void move(Vector2T p, T dtheta) {
         auto w = Pose2World(p);
         x = w(0);
         y = w(1);
@@ -294,10 +294,9 @@ vector<ScanLine<T>> untwist_scan(vector<ScanLine<T>> &twisted_readings, T twist_
     Pose<T> pose = initial_pose;
     vector<LineSegment<T>> world;
     world.reserve(count);
-    T inc_theta = 2.*EIGEN_PI / count;
     Point2d p1 = {NAN, NAN};
     Point2d p2 = {NAN, NAN};
-    for(int i = 0; i < twisted_readings.size()+1; i++) {
+    for(size_t i = 0; i < twisted_readings.size()+1; i++) {
         T scan_theta = (T) i / count * 2. * EIGEN_PI;
         T d1 = twisted_readings[i%count].d;
         p1=p2;
@@ -414,12 +413,12 @@ TwiddleResult twiddle(vector<double> guess, std::function<double(const vector<do
     double best_error = f(p);
 
     // potential changes
-    auto dp = std::vector<double>(guess.size(), 0.1);
+    auto dp = std::vector<double>(guess.size(), 0.01);
     const double growth_rate = 1.5;
 
 
     while(abs_sum(dp) > threshold) {
-        for(int i = 0; i< p.size(); i++) {
+        for(size_t i = 0; i< p.size(); i++) {
             p[i] += dp[i];
             double error = f(p);
 
@@ -475,9 +474,7 @@ Pose<T> match_scans(vector<ScanLine<double>> scan1, vector<ScanLine<double>> sca
 template <class T = double>
 vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, Pose<T> pose) {
     move_scan_timer.start();
-    typedef Eigen::Matrix<T,2,1> Vector2T;
     Point2d p, p_new;
-    auto transform = pose.Pose2WorldTransform();
 
     vector<ScanLine<T>> moved_scan;
     moved_scan.reserve(scan.size());
@@ -491,6 +488,9 @@ vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, Pose<T> pose) {
             p.y = d * sin(theta);
             pose.Pose2World(p, p_new);
             moved_scan_line.theta = atan2(p_new.y, p_new.x);
+            if(moved_scan_line.theta < 0) {
+                moved_scan_line.theta += 2 * EIGEN_PI;
+            }
             moved_scan_line.d = sqrt(p_new.y*p_new.y+p_new.x*p_new.x);
         }
         moved_scan.push_back(moved_scan_line);
@@ -500,7 +500,7 @@ vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, Pose<T> pose) {
 }
 
 double prorate(double x, double x1, double x2, double y1, double y2) {
-    return (x-x1) / (x2-x1) * (y2-y1) + y2;
+    return (x-x1) / (x2-x1) * (y2-y1) + y1;
 }
 
 // computes scan difference of scans without requiring matching equally spaced scan angles
@@ -511,19 +511,19 @@ T scan_difference2(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> 
     // todo: wrap around for angles
     double total_difference = 0;
     int points_compared = 0;
-    int compare_index = 0;
+    size_t compare_index = 0;
     for(auto & scan_line: scan1) {
         if(isnan(scan_line.d)){
             continue;
         }
         // find matching angle
-        for(int i = 0; i < scan2.size(); ++i) {
+        for(size_t i = 0; i < scan2.size(); ++i) {
             auto & l2_a = scan2[(compare_index + i ) % scan2.size()];
             auto & l2_b = scan2[(compare_index + i + 1) % scan2.size()];
-            if(is_between(scan_line.theta, l2_a.theta, l2_b.theta)) {
+            if(scan_line.theta >= l2_a.theta &&  scan_line.theta <= l2_b.theta) {
                 if( ! isnan(l2_a.d) && ! isnan (l2_b.d)) {
                     double d = prorate(scan_line.theta, l2_a.theta, l2_b.theta, l2_a.d, l2_b.d);
-                    total_difference += fabs(d);
+                    total_difference += fabs(scan_line.d - d);
                     ++points_compared;
                     compare_index += i;
                     break;
@@ -556,7 +556,8 @@ void test_match_scans2() {
     size_t n_points = 360;
     auto world = get_world();
     Pose<double> pose1;
-    Pose<double> pose2(.27, -.45, degrees2radians(2));
+    //Pose<double> pose2(.27, -.45, degrees2radians(2));
+    Pose<double> pose2(0, .25, degrees2radians(0));
     auto scan1 = scan_with_twist<double>(world, n_points, 0, 0, 0, pose1);
     auto scan2 = scan_with_twist<double>(world, n_points, 0, 0, 0, pose2);
 
@@ -564,6 +565,11 @@ void test_match_scans2() {
 
     cout << "actual pose: " << to_string(pose2) << endl;
     cout << "match pose : " << to_string(matched_pose) << endl;
+}
+
+void test_prorate() {
+    double y = prorate(15,10,20,10,40);
+    cout << "prorate result: " << y << endl;
 }
 
 void test_match_scans() {
@@ -590,7 +596,7 @@ void test_twiddle() {
 void test_move_scan(bool trace = false) {
     auto world = get_world();
     Pose<double> pose1;
-    Pose<double> pose2(0,0,degrees2radians(1));
+    Pose<double> pose2(0, 0.1, degrees2radians(1));
     auto scan1 = scan_with_twist2<double>(world, 360, pose1);
     auto scan2 = move_scan(scan1, pose2);
     if(trace) {
@@ -605,6 +611,7 @@ void test_move_scan(bool trace = false) {
 
 int main(int, char**)
 {
+    test_prorate();
     //test_move_scan(true);
     //for(int i = 0; i < 100; ++i) test_move_scan();
     test_match_scans2();
