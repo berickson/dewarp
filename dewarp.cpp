@@ -7,6 +7,7 @@
 #include <vector>
 #include <functional>
 #include <chrono>
+#include <random>
 
 #define degrees2radians(theta) ((theta) * EIGEN_PI / 180.)
 #define radians2degrees(theta) ((theta) * 180. / EIGEN_PI)
@@ -284,6 +285,9 @@ void print_world(vector<LineSegment<double>> & world) {
 
 Stopwatch untwist_timer;
 Stopwatch move_scan_timer;
+Stopwatch scan_difference_timer;
+Stopwatch match_scans_timer;
+
 
 template <class T=double>
 vector<ScanLine<T>> untwist_scan(vector<ScanLine<T>> &twisted_readings, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
@@ -507,8 +511,8 @@ double prorate(double x, double x1, double x2, double y1, double y2) {
 // tbd whether there is a requirement for increasing scan angles
 template<class T>
 T scan_difference2(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> & scan2) {
+    scan_difference_timer.start();
     // walk around scan1, finding correspondences in scan2
-    // todo: wrap around for angles
     double total_difference = 0;
     int points_compared = 0;
     size_t compare_index = 0;
@@ -531,40 +535,50 @@ T scan_difference2(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> 
             }
         }
     }
+    scan_difference_timer.stop();
     return total_difference / points_compared;
 }
 
 template <class T = double>
 Pose<T> match_scans2(vector<ScanLine<T>> & scan1, vector<ScanLine<T>> & scan2) {
+    match_scans_timer.start();
     auto error_function = [&scan1, &scan2](vector<double> params){
         Pose<T> pose(params[0], params[1], params[2]);
 
         auto scan2b = move_scan(scan2, pose);
         double d = scan_difference2(scan1, scan2b);
-        cout << "difference: " << d << " pose: " << to_string(pose) << endl;
+        //cout << "difference: " << d << " pose: " << to_string(pose) << endl;
 
         return d;
     };
 
     TwiddleResult r = twiddle({0,0,0}, error_function);
     Pose<T> match(r.p[0], r.p[1], r.p[2]);
+    match_scans_timer.stop();
     return match;
 }
 
 
+template<class T>
 void test_match_scans2() {
     size_t n_points = 360;
     auto world = get_world();
-    Pose<double> pose1;
-    //Pose<double> pose2(.27, -.45, degrees2radians(2));
-    Pose<double> pose2(0, .25, degrees2radians(0));
-    auto scan1 = scan_with_twist<double>(world, n_points, 0, 0, 0, pose1);
-    auto scan2 = scan_with_twist<double>(world, n_points, 0, 0, 0, pose2);
+
+    unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+    std::default_random_engine gen(seed);
+    std::normal_distribution<double> x_value(0.0,1.0);
+    std::normal_distribution<double> y_value(0.0,1.0);
+    std::normal_distribution<double> theta_value(0.0,10);
+
+    Pose<T> pose1;
+    Pose<T> pose2(x_value(gen), y_value(gen), degrees2radians(theta_value(gen)));
+    auto scan1 = scan_with_twist<T>(world, n_points, 0, 0, 0, pose1);
+    auto scan2 = scan_with_twist<T>(world, n_points, 0, 0, 0, pose2);
 
     auto matched_pose = match_scans2(scan1, scan2);
 
-    cout << "actual pose: " << to_string(pose2) << endl;
-    cout << "match pose : " << to_string(matched_pose) << endl;
+    cout << "actual pose: " << to_string(pose2)
+         << " -> matched pose: " << to_string(matched_pose) << endl;
 }
 
 void test_prorate() {
@@ -614,7 +628,7 @@ int main(int, char**)
     test_prorate();
     //test_move_scan(true);
     //for(int i = 0; i < 100; ++i) test_move_scan();
-    test_match_scans2();
+    for(int i = 0; i < 100; ++i) test_match_scans2<double>();
     //test_twiddle();
     //return 0;
     //test_match_scans();
@@ -625,6 +639,8 @@ int main(int, char**)
 
     cout << "time untwisting: " << untwist_timer.get_elapsed_seconds() << endl;
     cout << "time moving: " << move_scan_timer.get_elapsed_seconds() << endl;
+    cout << "time diffing: " << scan_difference_timer.get_elapsed_seconds() << endl;
+    cout << "total time matching: " << match_scans_timer.get_elapsed_seconds() << endl;
     return 0;
 
 }
