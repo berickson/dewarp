@@ -468,20 +468,21 @@ Pose<T> match_scans(vector<ScanLine<double>> scan1, vector<ScanLine<double>> sca
 
 
 template <class T = double>
-vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, Pose<T> pose) {
+vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, const vector<Point2d<T>> &scan_xy,  Pose<T> pose) {
     move_scan_timer.start();
     Point2d<T> p, p_new;
 
     vector<ScanLine<T>> moved_scan;
     moved_scan.reserve(scan.size());
+
+    auto xy = scan_xy.begin();
     
     for(auto & scan_line : scan) {
-        T theta = scan_line.theta;
         T d = scan_line.d;
         ScanLine<T> moved_scan_line;
         if(!isnan(d)) {
-            p.x = d * cos(theta);
-            p.y = d * sin(theta);
+            p.x = xy->x;
+            p.y = xy->y;
             pose.Pose2World(p, p_new);
             moved_scan_line.theta = atan2(p_new.y, p_new.x);
             if(moved_scan_line.theta < 0) {
@@ -490,6 +491,7 @@ vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, Pose<T> pose) {
             moved_scan_line.d = sqrt(p_new.y*p_new.y+p_new.x*p_new.x);
         }
         moved_scan.push_back(moved_scan_line);
+        ++xy;
     }
     move_scan_timer.stop();
     return moved_scan;
@@ -543,13 +545,23 @@ T scan_difference2(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> 
     return total_difference / points_compared;
 }
 
+template <class T> vector<Point2d<T>> get_scan_xy(const vector<ScanLine<T>> & scan) {
+    vector<Point2d<T>> scan_xy;
+    scan_xy.reserve(scan.size());
+    for(auto & scan_line : scan) {
+        scan_xy.push_back({scan_line.d * cos(scan_line.theta),scan_line.d * sin(scan_line.theta) });
+    }
+    return scan_xy;
+}
+
 template <class T = double>
 Pose<T> match_scans2(vector<ScanLine<T>> & scan1, vector<ScanLine<T>> & scan2) {
     match_scans_timer.start();
-    auto error_function = [&scan1, &scan2](vector<double> params){
+    auto scan2_xy = get_scan_xy(scan2);
+    auto error_function = [&scan1, &scan2, &scan2_xy](vector<double> params){
         Pose<T> pose(params[0], params[1], params[2]);
 
-        auto scan2b = move_scan(scan2, pose);
+        auto scan2b = move_scan(scan2, scan2_xy, pose);
         double d = scan_difference2(scan1, scan2b);
         //cout << "difference: " << d << " pose: " << to_string(pose) << endl;
 
@@ -617,7 +629,8 @@ void test_move_scan(bool trace = false) {
     Pose<double> pose1;
     Pose<double> pose2(0, 0.1, degrees2radians(1));
     auto scan1 = scan_with_twist2<double>(world, 360, pose1);
-    auto scan2 = move_scan(scan1, pose2);
+    auto scan1_xy = get_scan_xy(scan1);
+    auto scan2 = move_scan(scan1, scan1_xy, pose2);
     if(trace) {
         cout << "original scan, moved scan" << endl;
         for(unsigned i = 0; i < scan2.size(); i++) {
