@@ -77,32 +77,21 @@ public:
         update_trig();
     }
 
-    void move(Vector2T p, T dtheta) {
-        auto w = Pose2World(p);
-        x = w(0);
-        y = w(1);
+    void move(Point2d<T> p, T dtheta) {
+        Point2d<T> w;
+        Pose2World(p, w);
+        x = w.x;
+        y = w.y;
         theta += dtheta;
 
         update_trig();
     }
 
-    void  Pose2World(const Point2d<T> & p, Point2d<T> & rv) const {
+    inline void  Pose2World(const Point2d<T> & p, Point2d<T> & rv) const {
         rv.x = p.x * cos_theta - p.y * sin_theta + x;
         rv.y = p.x * sin_theta + p.y * cos_theta + y;
     }
 
-
-    void  Pose2World(const Vector2T & p, Vector2T & rv) const {
-        rv(0) = p(0) * cos_theta - p(1) * sin_theta + x;
-        rv(1) = p(0) * sin_theta + p(1) * cos_theta + y;
-    }
-
-    Vector2T Pose2World(Vector2T p) const {
-        Vector2T rv;
-        Pose2World(p,rv);
-
-        return rv;
-    }
 
     Eigen::Transform<T,2,Eigen::Affine> Pose2WorldTransform() const {
         Eigen::Transform<T,2,Eigen::Affine> t;
@@ -290,7 +279,6 @@ Stopwatch untwist_timer;
 Stopwatch move_scan_timer;
 Stopwatch scan_difference_timer;
 Stopwatch match_scans_timer;
-
 
 template <class T=double>
 vector<ScanLine<T>> untwist_scan(vector<ScanLine<T>> &twisted_readings, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
@@ -527,8 +515,16 @@ T scan_difference2(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> 
         }
         // find matching angle
         for(size_t i = 0; i < scan2.size(); ++i) {
-            auto & l2_a = scan2[(compare_index + i ) % scan2.size()];
-            auto & l2_b = scan2[(compare_index + i + 1) % scan2.size()];
+            size_t i2 = compare_index + i;
+            while(i2 > scan2.size()) {
+                i2 -= scan2.size();
+            }
+            size_t i3 = i2 + 1;
+            if(i3 >= scan2.size()) {
+                i3 -= scan2.size();
+            }
+            auto & l2_a = scan2[i2];
+            auto & l2_b = scan2[i3];
             if(scan_line.theta >= l2_a.theta &&  scan_line.theta <= l2_b.theta) {
                 if( ! isnan(l2_a.d) && ! isnan (l2_b.d)) {
                     double d = prorate(scan_line.theta, l2_a.theta, l2_b.theta, l2_a.d, l2_b.d);
@@ -538,6 +534,9 @@ T scan_difference2(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> 
                     break;
                 }
             }
+        }
+        while (compare_index >= scan2.size()) {
+            compare_index -= scan2.size();
         }
     }
     scan_difference_timer.stop();
