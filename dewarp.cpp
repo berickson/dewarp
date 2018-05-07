@@ -15,9 +15,10 @@
 using namespace std;
 using namespace std::chrono;
 
+template <class T>
 struct Point2d {
-    double x;
-    double y;
+    T x;
+    T y;
 };
 
 
@@ -85,18 +86,18 @@ public:
         update_trig();
     }
 
-    void  Pose2World(const Point2d & p, Point2d & rv) const {
+    void  Pose2World(const Point2d<T> & p, Point2d<T> & rv) const {
         rv.x = p.x * cos_theta - p.y * sin_theta + x;
         rv.y = p.x * sin_theta + p.y * cos_theta + y;
     }
 
 
-    void  Pose2World(const Eigen::Vector2d & p, Eigen::Vector2d & rv) const {
+    void  Pose2World(const Vector2T & p, Vector2T & rv) const {
         rv(0) = p(0) * cos_theta - p(1) * sin_theta + x;
         rv(1) = p(0) * sin_theta + p(1) * cos_theta + y;
     }
 
-    Vector2T Pose2World(Eigen::Vector2d p) const {
+    Vector2T Pose2World(Vector2T p) const {
         Vector2T rv;
         Pose2World(p,rv);
 
@@ -127,7 +128,9 @@ struct ScanLine {
 };
 
 
-std::string to_string(Pose<> & pose) {
+
+template <class T>
+std::string to_string(Pose<T> & pose) {
     stringstream ss;
     ss << std::fixed << std::setprecision(3) << pose.get_x() 
        << ", " << pose.get_y() 
@@ -160,7 +163,7 @@ class Line {
     T b;
     T c;
 
-   static Line<T> from_points(const Point2d & p1, const Point2d & p2) {
+   static Line<T> from_points(const Point2d<T> & p1, const Point2d<T> & p2) {
        auto h1 = Vector3T(p1.x,p1.y,1);      
        auto h2 = Vector3T(p2.x,p2.y,1);
        auto l = h1.cross(h2);
@@ -184,12 +187,12 @@ template <class T=double>
 class LineSegment {
     typedef Eigen::Matrix<T,2,1> Vector2T;
     public:
-    Point2d p1;
-    Point2d p2;
-    LineSegment(Point2d p1, Point2d p2) : p1(p1), p2(p2) {      
+    Point2d<T> p1;
+    Point2d<T> p2;
+    LineSegment(Point2d<T> p1, Point2d<T> p2) : p1(p1), p2(p2) {      
     }
 
-    Point2d intersection(LineSegment & s2) {
+    Point2d<T> intersection(LineSegment & s2) {
         auto l2 = Line<T>::from_points(s2.p1, s2.p2);
         return intersection(l2);
     }
@@ -197,7 +200,7 @@ class LineSegment {
     Vector2T intersection(Line<T> l2) {
         auto l1 = Line<T>::from_points(p1,p2);
         Vector2T p = l1.intersection(l2);
-        if(is_between(p(0),p1.x,p2.x)) {
+        if(is_between<T>(p(0),p1.x,p2.x)) {
             return p;
         } else {
             return Vector2T(NAN, NAN);
@@ -298,8 +301,8 @@ vector<ScanLine<T>> untwist_scan(vector<ScanLine<T>> &twisted_readings, T twist_
     Pose<T> pose = initial_pose;
     vector<LineSegment<T>> world;
     world.reserve(count);
-    Point2d p1 = {NAN, NAN};
-    Point2d p2 = {NAN, NAN};
+    Point2d<T> p1 = {NAN, NAN};
+    Point2d<T> p2 = {NAN, NAN};
     for(size_t i = 0; i < twisted_readings.size()+1; i++) {
         T scan_theta = (T) i / count * 2. * EIGEN_PI;
         T d1 = twisted_readings[i%count].d;
@@ -339,12 +342,13 @@ void test_fake_scan() {
     print_scan(scan);
 }
 
-vector<LineSegment<double>> get_world() {
-    vector<LineSegment<double>> world;
-    world.push_back(LineSegment<double>({0,2}, {1,2}));
-    world.push_back(LineSegment<double>({-10,2}, {10,2}));
-    world.push_back(LineSegment<double>({-10,-3}, {10,-3}));
-    world.push_back(LineSegment<double>({10,2}, {10,-3}));
+template <class T = double>
+vector<LineSegment<T>> get_world() {
+    vector<LineSegment<T>> world;
+    world.push_back(LineSegment<T>({0,2}, {1,2}));
+    world.push_back(LineSegment<T>({-10,2}, {10,2}));
+    world.push_back(LineSegment<T>({-10,-3}, {10,-3}));
+    world.push_back(LineSegment<T>({10,2}, {10,-3}));
     return world;
 }
 
@@ -478,14 +482,14 @@ Pose<T> match_scans(vector<ScanLine<double>> scan1, vector<ScanLine<double>> sca
 template <class T = double>
 vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, Pose<T> pose) {
     move_scan_timer.start();
-    Point2d p, p_new;
+    Point2d<T> p, p_new;
 
     vector<ScanLine<T>> moved_scan;
     moved_scan.reserve(scan.size());
     
     for(auto & scan_line : scan) {
-        double theta = scan_line.theta;
-        double d = scan_line.d;
+        T theta = scan_line.theta;
+        T d = scan_line.d;
         ScanLine<T> moved_scan_line;
         if(!isnan(d)) {
             p.x = d * cos(theta);
@@ -503,7 +507,8 @@ vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, Pose<T> pose) {
     return moved_scan;
 }
 
-double prorate(double x, double x1, double x2, double y1, double y2) {
+template <class T>
+double prorate(T x, T x1, T x2, T y1, T y2) {
     return (x-x1) / (x2-x1) * (y2-y1) + y1;
 }
 
@@ -559,16 +564,16 @@ Pose<T> match_scans2(vector<ScanLine<T>> & scan1, vector<ScanLine<T>> & scan2) {
 }
 
 
-template<class T>
+template<class T = double>
 void test_match_scans2() {
     size_t n_points = 360;
-    auto world = get_world();
+    auto world = get_world<T>();
 
     unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine gen(seed);
-    std::normal_distribution<double> x_value(0.0,1.0);
-    std::normal_distribution<double> y_value(0.0,1.0);
-    std::normal_distribution<double> theta_value(0.0,10);
+    std::normal_distribution<T> x_value(0.0,1.0);
+    std::normal_distribution<T> y_value(0.0,1.0);
+    std::normal_distribution<T> theta_value(0.0,10);
 
     Pose<T> pose1;
     Pose<T> pose2(x_value(gen), y_value(gen), degrees2radians(theta_value(gen)));
@@ -607,6 +612,7 @@ void test_twiddle() {
         
 }
 
+template <class T>
 void test_move_scan(bool trace = false) {
     auto world = get_world();
     Pose<double> pose1;
@@ -628,7 +634,7 @@ int main(int, char**)
     test_prorate();
     //test_move_scan(true);
     //for(int i = 0; i < 100; ++i) test_move_scan();
-    for(int i = 0; i < 100; ++i) test_match_scans2<double>();
+    for(int i = 0; i < 100; ++i) test_match_scans2<float>();
     //test_twiddle();
     //return 0;
     //test_match_scans();
