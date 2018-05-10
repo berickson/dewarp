@@ -474,33 +474,31 @@ Pose<T> match_scans(vector<ScanLine<double>> scan1, vector<ScanLine<double>> sca
 
 template <class T = double>
 void move_scan(
-    const vector<ScanLine<T>> & scan, 
     const vector<Point2d<T>> &scan_xy,  
     Pose<T> pose, 
-    vector<ScanLine<T>> &moved_scan) {
+    vector<Point2d<T>> &moved_scan) {
         
     move_scan_timer.start();
     Point2d<T> p, p_new;
 
     moved_scan.resize(0);
 
-    auto xy = scan_xy.begin();
-    
-    for(auto & scan_line : scan) {
-        T d = scan_line.d;
-        ScanLine<T> moved_scan_line;
-        if(!isnan(d)) {
-            p.x = xy->x;
-            p.y = xy->y;
+    for(auto & xy : scan_xy) {
+        if(!isnan(xy.x)) {
+            p.x = xy.x;
+            p.y = xy.y;
             pose.Pose2World(p, p_new);
-            moved_scan_line.theta = atan2(p_new.y, p_new.x);
-            if(moved_scan_line.theta < 0) {
-                moved_scan_line.theta += 2 * EIGEN_PI;
-            }
-            moved_scan_line.d = sqrt(p_new.y*p_new.y+p_new.x*p_new.x);
+            //moved_scan_line.theta = atan2(p_new.y, p_new.x);
+
+            //if(moved_scan_line.theta < 0) {
+            //    moved_scan_line.theta += 2 * EIGEN_PI;
+            //}
+            //moved_scan_line.d = sqrt(p_new.y*p_new.y+p_new.x*p_new.x);
+        } else {
+            p_new.x = NAN;
+            p_new.y = NAN;
         }
-        moved_scan.emplace_back(moved_scan_line);
-        ++xy;
+        moved_scan.emplace_back(p_new);
     }
     move_scan_timer.stop();
 }
@@ -510,11 +508,18 @@ double prorate(T x, T x1, T x2, T y1, T y2) {
     return (x-x1) / (x2-x1) * (y2-y1) + y1;
 }
 
+template <class T>
+inline bool is_ccw(const Point2d<T> & p1, const Point2d<T> & p2) {
+    //return atan2(p1.y, p1.x) > atan2(p2.y, p2.x);
+    return (p1.x*p2.y-p1.y*p2.x) >= 0;
+}
 
 // computes scan difference of scans without requiring matching equally spaced scan angles
 // tbd whether there is a requirement for increasing scan angles
 template<class T>
-T scan_difference2(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> & scan2) {
+T scan_difference2(const vector<Point2d<T>> & scan1, const vector<Point2d<T>> & scan2) {
+    typedef Eigen::Matrix<T,2,1> Vector2T;
+    
     scan_difference_timer.start();
     // walk around scan1, finding correspondences in scan2
     T total_difference = 0;
@@ -523,10 +528,10 @@ T scan_difference2(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> 
     // index of rays in scan2 to compare
     size_t i2a=0;
     size_t i2b=1;
-    // .245 before, 
+
     const size_t scan2_size = scan2.size();
-    for(auto & scan_line: scan1) {
-        if(isnan(scan_line.d)){
+    for(auto & p1 : scan1) {
+        if(isnan(p1.x)){
             continue;
         }
         // find matching angle
@@ -534,12 +539,19 @@ T scan_difference2(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> 
         for(size_t i = 0; !found && i < scan2_size; ++i) {
             auto & l2_a = scan2[i2a];
             auto & l2_b = scan2[i2b];
-            if(scan_line.theta >= l2_a.theta &&  scan_line.theta <= l2_b.theta) {
-                if( ! isnan(l2_a.d) && ! isnan (l2_b.d)) {
-                    T d = prorate(scan_line.theta, l2_a.theta, l2_b.theta, l2_a.d, l2_b.d);
-                    total_difference += fabs(scan_line.d - d);
-                    ++points_compared;
-                }
+            if(!isnan(l2_a.x) && !isnan(l2_b.x) && is_ccw(l2_a, p1) && is_ccw(p1, l2_b)) {
+                Line<T> l1 = Line<T>::from_points(l2_a, l2_b);
+                Line<T> l2 = Line<T>::from_points({0,0},p1);
+                Vector2T v = l1.intersection(l2);
+                Point2d<T> p;
+                p.x = v(0);
+                p.y = v(1);
+
+                T dx = p.x-p1.x;
+                T dy = p.y-p1.y;
+
+                total_difference += sqrt(dx*dx+dy*dy);
+                ++points_compared;
                 found = true;
             } else {
                 // increment line2 rays and wrap around if necessary
@@ -568,15 +580,16 @@ template <class T> vector<Point2d<T>> get_scan_xy(const vector<ScanLine<T>> & sc
 template <class T = double>
 Pose<T> match_scans2(vector<ScanLine<T>> & scan1, vector<ScanLine<T>> & scan2) {
     match_scans_timer.start();
+    auto scan1_xy = get_scan_xy(scan1);
     auto scan2_xy = get_scan_xy(scan2);
-    vector<ScanLine<T>> scan2b;
+    vector<Point2d<T>> scan2b;
     scan2b.reserve(scan1.size());
-    auto error_function = [&scan1, &scan2, &scan2_xy, &scan2b](vector<T> params){
+    auto error_function = [&scan1_xy, &scan2_xy, &scan2b](vector<T> params){
         Pose<T> pose(params[0], params[1], params[2]);
 
         //vector<ScanLine<T>> scan2b;
-        move_scan(scan2, scan2_xy, pose, scan2b);
-        T d = scan_difference2(scan1, scan2b);
+        move_scan(scan2_xy, pose, scan2b);
+        T d = scan_difference2(scan1_xy, scan2b);
         //cout << "difference: " << d << " pose: " << to_string(pose) << endl;
 
         return d;
@@ -641,17 +654,18 @@ template <class T>
 void test_move_scan(bool trace = false) {
     auto world = get_world<T>();
     Pose<T> pose1;
-    Pose<T> pose2(0, 0.1, degrees2radians(1));
+    Pose<T> pose2(0, 5, degrees2radians(3));
     auto scan1 = scan_with_twist2<T>(world, 360, pose1);
     auto scan1_xy = get_scan_xy(scan1);
-    vector<ScanLine<T>> scan2;
-    move_scan(scan1, scan1_xy, pose2, scan2);
+    vector<Point2d<T>> scan2;
+    move_scan(scan1_xy, pose2, scan2);
     if(trace) {
         cout << "original scan, moved scan" << endl;
         for(unsigned i = 0; i < scan2.size(); i++) {
-            cout << radians2degrees(scan1[i].theta) << "°, " << scan1[i].d 
-                << " -> "  
-                << radians2degrees(scan2[i].theta) << "°, " << scan2[i].d << endl;
+            cout << " -> "  <<scan1_xy[i].x <<  ", " << scan1_xy[i].y
+
+                << " -> "  <<scan2[i].x <<  ", " << scan2[i].y  << endl;
+                //<< radians2degrees(scan2[i].theta) << "°, " << scan2[i].d << endl;
         }
     }
 }
@@ -659,9 +673,12 @@ void test_move_scan(bool trace = false) {
 int main(int, char**)
 {
     //test_prorate();
-    //test_move_scan(true);
+
+    //test_move_scan<float>(true);
     //for(int i = 0; i < 100000; ++i) test_move_scan<float>();
+
     for(int i = 0; i < 100; ++i) test_match_scans2<float>();
+
     //test_twiddle();
     //return 0;
     //test_match_scans();
