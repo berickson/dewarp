@@ -1,4 +1,7 @@
 # TODO
+- Performance:
+  remove atan2 from difference: Keep scans in x,y format, use x/y or y/x for sorting angles 
+
 - Integrate with ROS
     - input scans, output scans, processing progress
 - Investigate vectorization for performance
