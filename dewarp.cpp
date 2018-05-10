@@ -390,12 +390,14 @@ T scan_difference(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> &
     return total_difference / valid_count;
 }
 
+template <class T>
 struct TwiddleResult{
-    vector<double> p;
-    double error;
+    vector<T> p;
+    T error;
 };
 
-double abs_sum(vector<double> & v) {
+template <class T>
+double abs_sum(vector<T> & v) {
     double rv = 0;
     for(auto p : v) {
         rv += fabs(p);
@@ -404,21 +406,22 @@ double abs_sum(vector<double> & v) {
 }
 
 // based loosely on https://martin-thoma.com/twiddle/
-TwiddleResult twiddle(vector<double> guess, std::function<double(const vector<double>)> f, double threshold = 0.003) {
+template <class T>
+TwiddleResult<T> twiddle(vector<T> guess, std::function<T(const vector<T>)> f, T threshold = 0.003) {
     
     // initialize parameters to guess
-    vector<double> p = guess;
-    double best_error = f(p);
+    vector<T> p = guess;
+    T best_error = f(p);
 
     // potential changes
-    auto dp = std::vector<double>(guess.size(), 0.01);
-    const double growth_rate = 1.5;
+    auto dp = std::vector<T>(guess.size(), 0.01);
+    const T growth_rate = 1.5;
 
 
     while(abs_sum(dp) > threshold) {
         for(size_t i = 0; i< p.size(); i++) {
             p[i] += dp[i];
-            double error = f(p);
+            T error = f(p);
 
             if (error < best_error) {
                 best_error = error;
@@ -443,7 +446,7 @@ TwiddleResult twiddle(vector<double> guess, std::function<double(const vector<do
         }
     }
     //cout << "twiddle done" << endl;
-    TwiddleResult rv;
+    TwiddleResult<T> rv;
     rv.p = p;
     rv.error = best_error;
     return rv;
@@ -462,7 +465,7 @@ Pose<T> match_scans(vector<ScanLine<double>> scan1, vector<ScanLine<double>> sca
         return d;
     };
 
-    TwiddleResult r = twiddle({0,0,0}, error_function);
+    TwiddleResult<T> r = twiddle<T>({0,0,0}, error_function);
     Pose<T> match(r.p[0], r.p[1], r.p[2]);
     return match;
 }
@@ -470,12 +473,16 @@ Pose<T> match_scans(vector<ScanLine<double>> scan1, vector<ScanLine<double>> sca
 
 
 template <class T = double>
-vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, const vector<Point2d<T>> &scan_xy,  Pose<T> pose) {
+void move_scan(
+    const vector<ScanLine<T>> & scan, 
+    const vector<Point2d<T>> &scan_xy,  
+    Pose<T> pose, 
+    vector<ScanLine<T>> &moved_scan) {
+        
     move_scan_timer.start();
     Point2d<T> p, p_new;
 
-    vector<ScanLine<T>> moved_scan;
-    moved_scan.reserve(scan.size());
+    moved_scan.resize(0);
 
     auto xy = scan_xy.begin();
     
@@ -492,11 +499,10 @@ vector<ScanLine<T>> move_scan(const vector<ScanLine<T>> & scan, const vector<Poi
             }
             moved_scan_line.d = sqrt(p_new.y*p_new.y+p_new.x*p_new.x);
         }
-        moved_scan.push_back(moved_scan_line);
+        moved_scan.emplace_back(moved_scan_line);
         ++xy;
     }
     move_scan_timer.stop();
-    return moved_scan;
 }
 
 template <class T>
@@ -563,17 +569,20 @@ template <class T = double>
 Pose<T> match_scans2(vector<ScanLine<T>> & scan1, vector<ScanLine<T>> & scan2) {
     match_scans_timer.start();
     auto scan2_xy = get_scan_xy(scan2);
-    auto error_function = [&scan1, &scan2, &scan2_xy](vector<double> params){
+    vector<ScanLine<T>> scan2b;
+    scan2b.reserve(scan1.size());
+    auto error_function = [&scan1, &scan2, &scan2_xy, &scan2b](vector<T> params){
         Pose<T> pose(params[0], params[1], params[2]);
 
-        auto scan2b = move_scan(scan2, scan2_xy, pose);
-        double d = scan_difference2(scan1, scan2b);
+        //vector<ScanLine<T>> scan2b;
+        move_scan(scan2, scan2_xy, pose, scan2b);
+        T d = scan_difference2(scan1, scan2b);
         //cout << "difference: " << d << " pose: " << to_string(pose) << endl;
 
         return d;
     };
 
-    TwiddleResult r = twiddle({0,0,0}, error_function);
+    TwiddleResult<T> r = twiddle<T>({0,0,0}, error_function);
     Pose<T> match(r.p[0], r.p[1], r.p[2]);
     match_scans_timer.stop();
     return match;
@@ -623,19 +632,20 @@ void test_match_scans() {
 
 void test_twiddle() {
     auto lambda = [](std::vector<double> v)->double{return fabs(v[0]-3)+fabs(v[1]-5) + fabs(v[2]);};
-    auto rv = twiddle({0,0,0}, lambda, 1E-10);
+    auto rv = twiddle<double>({0,0,0}, lambda, 1E-10);
     cout << rv.p[0] << ", " << rv.p[1] << ", " << rv.p[2] << " error: " << rv.error << endl;
         
 }
 
 template <class T>
 void test_move_scan(bool trace = false) {
-    auto world = get_world();
-    Pose<double> pose1;
-    Pose<double> pose2(0, 0.1, degrees2radians(1));
-    auto scan1 = scan_with_twist2<double>(world, 360, pose1);
+    auto world = get_world<T>();
+    Pose<T> pose1;
+    Pose<T> pose2(0, 0.1, degrees2radians(1));
+    auto scan1 = scan_with_twist2<T>(world, 360, pose1);
     auto scan1_xy = get_scan_xy(scan1);
-    auto scan2 = move_scan(scan1, scan1_xy, pose2);
+    vector<ScanLine<T>> scan2;
+    move_scan(scan1, scan1_xy, pose2, scan2);
     if(trace) {
         cout << "original scan, moved scan" << endl;
         for(unsigned i = 0; i < scan2.size(); i++) {
@@ -648,9 +658,9 @@ void test_move_scan(bool trace = false) {
 
 int main(int, char**)
 {
-    test_prorate();
+    //test_prorate();
     //test_move_scan(true);
-    //for(int i = 0; i < 100; ++i) test_move_scan();
+    //for(int i = 0; i < 100000; ++i) test_move_scan<float>();
     for(int i = 0; i < 100; ++i) test_match_scans2<float>();
     //test_twiddle();
     //return 0;
