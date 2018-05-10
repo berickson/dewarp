@@ -24,10 +24,12 @@ struct Point2d {
 
 class Stopwatch {
 public:
+    size_t start_count = 0;
     time_point<system_clock> start_time;
     duration<double> elapsed_time = duration<double>::zero();
     bool started = false;
     void start() {
+        ++ start_count;
         start_time = system_clock::now();
         started = true;
     }
@@ -502,43 +504,46 @@ double prorate(T x, T x1, T x2, T y1, T y2) {
     return (x-x1) / (x2-x1) * (y2-y1) + y1;
 }
 
+
 // computes scan difference of scans without requiring matching equally spaced scan angles
 // tbd whether there is a requirement for increasing scan angles
 template<class T>
 T scan_difference2(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> & scan2) {
     scan_difference_timer.start();
     // walk around scan1, finding correspondences in scan2
-    double total_difference = 0;
+    T total_difference = 0;
     int points_compared = 0;
-    size_t compare_index = 0;
+
+    // index of rays in scan2 to compare
+    size_t i2a=0;
+    size_t i2b=1;
+    // .245 before, 
+    const size_t scan2_size = scan2.size();
     for(auto & scan_line: scan1) {
         if(isnan(scan_line.d)){
             continue;
         }
         // find matching angle
-        for(size_t i = 0; i < scan2.size(); ++i) {
-            size_t i2 = compare_index + i;
-            while(i2 > scan2.size()) {
-                i2 -= scan2.size();
-            }
-            size_t i3 = i2 + 1;
-            if(i3 >= scan2.size()) {
-                i3 -= scan2.size();
-            }
-            auto & l2_a = scan2[i2];
-            auto & l2_b = scan2[i3];
+        bool found = false;
+        for(size_t i = 0; !found && i < scan2_size; ++i) {
+            auto & l2_a = scan2[i2a];
+            auto & l2_b = scan2[i2b];
             if(scan_line.theta >= l2_a.theta &&  scan_line.theta <= l2_b.theta) {
                 if( ! isnan(l2_a.d) && ! isnan (l2_b.d)) {
-                    double d = prorate(scan_line.theta, l2_a.theta, l2_b.theta, l2_a.d, l2_b.d);
+                    T d = prorate(scan_line.theta, l2_a.theta, l2_b.theta, l2_a.d, l2_b.d);
                     total_difference += fabs(scan_line.d - d);
                     ++points_compared;
-                    compare_index += i;
-                    break;
+                }
+                found = true;
+            } else {
+                // increment line2 rays and wrap around if necessary
+                if(++i2a == scan2_size) {
+                    i2a = 0;
+                }
+                if(++i2b == scan2_size) {
+                    i2b = 0;
                 }
             }
-        }
-        while (compare_index >= scan2.size()) {
-            compare_index -= scan2.size();
         }
     }
     scan_difference_timer.stop();
@@ -582,12 +587,12 @@ void test_match_scans2() {
 
     unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine gen(seed);
-    std::normal_distribution<T> x_value(0.0,1.0);
-    std::normal_distribution<T> y_value(0.0,1.0);
-    std::normal_distribution<T> theta_value(0.0,10);
+    std::normal_distribution<T> x_value(0.0,0.5);
+    std::normal_distribution<T> y_value(0.0,0.5);
+    std::normal_distribution<T> theta_value(0.0,degrees2radians(3));
 
     Pose<T> pose1;
-    Pose<T> pose2(x_value(gen), y_value(gen), degrees2radians(theta_value(gen)));
+    Pose<T> pose2(x_value(gen), y_value(gen), (theta_value(gen)));
     auto scan1 = scan_with_twist<T>(world, n_points, 0, 0, 0, pose1);
     auto scan2 = scan_with_twist<T>(world, n_points, 0, 0, 0, pose2);
 
@@ -657,7 +662,7 @@ int main(int, char**)
 
     cout << "time untwisting: " << untwist_timer.get_elapsed_seconds() << endl;
     cout << "time moving: " << move_scan_timer.get_elapsed_seconds() << endl;
-    cout << "time diffing: " << scan_difference_timer.get_elapsed_seconds() << endl;
+    cout << "time diffing: " << scan_difference_timer.get_elapsed_seconds() << " count: " << scan_difference_timer.start_count<< endl;
     cout << "total time matching: " << match_scans_timer.get_elapsed_seconds() << endl;
     return 0;
 
