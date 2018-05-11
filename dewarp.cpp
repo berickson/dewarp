@@ -12,6 +12,8 @@
 #define degrees2radians(theta) ((theta) * EIGEN_PI / 180.)
 #define radians2degrees(theta) ((theta) * 180. / EIGEN_PI)
 
+std::default_random_engine random_engine;
+
 using namespace std;
 using namespace std::chrono;
 
@@ -244,7 +246,8 @@ T fake_laser_reading(const Pose<T> & pose, T theta, const vector<LineSegment<T>>
         }
     }
 
-    return best_d;
+    std::normal_distribution<T> random_scale(1.0, 0.02);
+    return best_d * random_scale(random_engine);
 }
 
 template <class T=double>
@@ -556,7 +559,7 @@ T scan_difference2(const vector<Point2d<T>> & scan1, const vector<Point2d<T>> & 
                 T dy = p.y-p1.y;
 
                 // tbd: what is the best difference metric?
-                total_difference += dx*dx+dy*dy;
+                total_difference += sqrt(dx*dx+dy*dy);
                 ++points_compared;
                 found = true;
             } else {
@@ -613,14 +616,12 @@ void test_match_scans2() {
     size_t n_points = 360;
     auto world = get_world<T>();
 
-    unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-    std::default_random_engine gen(seed);
     std::normal_distribution<T> x_value(0.0,0.5);
     std::normal_distribution<T> y_value(0.0,0.5);
     std::normal_distribution<T> theta_value(0.0,degrees2radians(3));
 
     Pose<T> pose1;
-    Pose<T> pose2(x_value(gen), y_value(gen), (theta_value(gen)));
+    Pose<T> pose2(x_value(random_engine), y_value(random_engine), (theta_value(random_engine)));
     auto scan1 = scan_with_twist<T>(world, n_points, 0, 0, 0, pose1);
     auto scan2 = scan_with_twist<T>(world, n_points, 0, 0, 0, pose2);
 
