@@ -19,6 +19,9 @@ template <class T>
 struct Point2d {
     T x;
     T y;
+    float norm() const {
+        return sqrt(x*x+y*y);
+    }
 };
 
 
@@ -119,6 +122,12 @@ struct ScanLine {
 };
 
 
+template <class T>
+std::string to_sring(Point2d<T> & p) {
+    stringstream ss;
+    ss << "(" << p.x << ", " << p.y << ")";
+    return ss.str();
+}
 
 template <class T>
 std::string to_string(Pose<T> & pose) {
@@ -165,12 +174,12 @@ class Line {
        return line;  
     }
 
-    Vector2T intersection(Line l2) {
+    Point2d<T> intersection(Line l2) {
         auto h = Vector3T(a,b,c).cross(Vector3T(l2.a, l2.b, l2.c));
         if(h(2)==0) {
-            return Vector2T(NAN, NAN);
+            return {NAN, NAN};
         }
-        return Vector2T(h(0)/h(2), h(1)/h(2));
+        return {h(0)/h(2), h(1)/h(2)};
     }
 };
 
@@ -188,13 +197,13 @@ class LineSegment {
         return intersection(l2);
     }
 
-    Vector2T intersection(Line<T> l2) {
+    Point2d<T> intersection(Line<T> l2) {
         auto l1 = Line<T>::from_points(p1,p2);
-        Vector2T p = l1.intersection(l2);
-        if(is_between<T>(p(0),p1.x,p2.x)) {
+        Point2d<T> p = l1.intersection(l2);
+        if(is_between<T>(p.x,p1.x,p2.x)) {
             return p;
         } else {
-            return Vector2T(NAN, NAN);
+            return {NAN, NAN};
         }
     }
     std::string to_string() {
@@ -214,19 +223,18 @@ T sign_of(T v) {
 
 template<class T=double>
 T fake_laser_reading(const Pose<T> & pose, T theta, const vector<LineSegment<T>> & world) {
-    typedef Eigen::Matrix<T,2,1> Vector2T;
     T dx = cos(theta + pose.get_theta());
     T dy = sin(theta + pose.get_theta());
     auto l = Line<T>::from_points({pose.get_x(),pose.get_y()},{pose.get_x()+dx,pose.get_y()+dy});
     T best_d = NAN;
     for( auto segment : world) {
-        Vector2T p = segment.intersection(l);
-        if(isnan(p(0))) {
+        Point2d<T> p = segment.intersection(l);
+        if(isnan(p.x)) {
             continue;
         }
-        p(0) -= pose.get_x();
-        p(1) -= pose.get_y();
-        if((sign_of(p(0))==sign_of(dx)) && (sign_of(p(1))==sign_of(dy))) {
+        p.x -= pose.get_x();
+        p.y -= pose.get_y();
+        if((sign_of(p.x)==sign_of(dx)) && (sign_of(p.y)==sign_of(dy))) {
             T d = p.norm();
             if(isnan(best_d)) {
                 best_d = d;
@@ -366,8 +374,8 @@ void test_intersection() {
     auto s = LineSegment<>({-2.89755,-3},{-2.89707,-3});
     auto l = Line<double>::from_points({0,0},{v(0), v(1)});
     auto p = s.intersection(l);
-    cout << "intersection at:" << p<< endl;
-    if((sign_of(p(0))==sign_of(dx)) && (sign_of(p(1))==sign_of(dy))) {
+    cout << "intersection at:" << p.x << ", " << p.y << endl;
+    if((sign_of(p.x)==sign_of(dx)) && (sign_of(p.y)==sign_of(dy))) {
     
     cout << "signs ok";
     }
@@ -510,7 +518,8 @@ double prorate(T x, T x1, T x2, T y1, T y2) {
 
 template <class T>
 inline bool is_ccw(const Point2d<T> & p1, const Point2d<T> & p2) {
-    //return atan2(p1.y, p1.x) > atan2(p2.y, p2.x);
+    // it is cc2 if the cross product is positive
+    // here we only need to calculate the z term of the cross product
     return (p1.x*p2.y-p1.y*p2.x) >= 0;
 }
 
@@ -518,7 +527,6 @@ inline bool is_ccw(const Point2d<T> & p1, const Point2d<T> & p2) {
 // tbd whether there is a requirement for increasing scan angles
 template<class T>
 T scan_difference2(const vector<Point2d<T>> & scan1, const vector<Point2d<T>> & scan2) {
-    typedef Eigen::Matrix<T,2,1> Vector2T;
     
     scan_difference_timer.start();
     // walk around scan1, finding correspondences in scan2
@@ -534,23 +542,21 @@ T scan_difference2(const vector<Point2d<T>> & scan1, const vector<Point2d<T>> & 
         if(isnan(p1.x)){
             continue;
         }
+        Line<T> l1 = Line<T>::from_points({0,0},p1);
         // find matching angle
         bool found = false;
         for(size_t i = 0; !found && i < scan2_size; ++i) {
             auto & l2_a = scan2[i2a];
             auto & l2_b = scan2[i2b];
             if(!isnan(l2_a.x) && !isnan(l2_b.x) && is_ccw(l2_a, p1) && is_ccw(p1, l2_b)) {
-                Line<T> l1 = Line<T>::from_points(l2_a, l2_b);
-                Line<T> l2 = Line<T>::from_points({0,0},p1);
-                Vector2T v = l1.intersection(l2);
-                Point2d<T> p;
-                p.x = v(0);
-                p.y = v(1);
+                Line<T> l2 = Line<T>::from_points(l2_a, l2_b);
+                Point2d<T> p = l1.intersection(l2);
 
                 T dx = p.x-p1.x;
                 T dy = p.y-p1.y;
 
-                total_difference += sqrt(dx*dx+dy*dy);
+                // tbd: what is the best difference metric?
+                total_difference += dx*dx+dy*dy;
                 ++points_compared;
                 found = true;
             } else {
@@ -670,14 +676,21 @@ void test_move_scan(bool trace = false) {
     }
 }
 
+template <class T>
+void test_match_n_scans(size_t n) {
+    cout << "matching  " << n << " random scans" << endl;
+    for(int i = 0; i < 1000; ++i) test_match_scans2<T>();
+    cout << "done matching  " << n << " random scans" << endl;
+}
+
 int main(int, char**)
 {
     //test_prorate();
 
     //test_move_scan<float>(true);
     //for(int i = 0; i < 100000; ++i) test_move_scan<float>();
+    test_match_n_scans<float>(1000);
 
-    for(int i = 0; i < 100; ++i) test_match_scans2<float>();
 
     //test_twiddle();
     //return 0;
