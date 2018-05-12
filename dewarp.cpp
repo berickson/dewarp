@@ -31,7 +31,7 @@ class Stopwatch {
 public:
     size_t start_count = 0;
     time_point<system_clock> start_time;
-    duration<double> elapsed_time = duration<double>::zero();
+    duration<int64_t, std::ratio<1,1000000000>> elapsed_time = duration<int64_t, std::ratio<1,1000000000>>::zero();
     bool started = false;
     void start() {
         ++ start_count;
@@ -47,10 +47,8 @@ public:
     }
 
     double get_elapsed_seconds() {
-        if(started) {
-            return (elapsed_time + system_clock::now() - start_time).count();
-        }
-        return elapsed_time.count();
+        auto elapsed = started ? elapsed_time + system_clock::now() - start_time : elapsed_time; 
+        return duration_cast<duration<double>>(elapsed_time).count();
     }
 };
 
@@ -144,9 +142,9 @@ template <class T>
 void print_scan(vector<ScanLine<T>> scan) {
     cout << "degrees, d, px, py" << endl;
     for(auto s : scan) {
-        double theta = s.theta;
-        double px = s.d*cos(theta);
-        double py = s.d*sin(theta);
+        T theta = s.theta;
+        T px = s.d*cos(theta);
+        T py = s.d*sin(theta);
         cout << radians2degrees(s.theta) << ", " << s.d << ", " << px << ", " << py << endl;
     }
 }
@@ -386,10 +384,10 @@ void test_intersection() {
 
 template<class T = double>
 T scan_difference(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> & scan2) {
-    double total_difference = 0;
+    T total_difference = 0;
     size_t valid_count = 0;
     for(unsigned i = 0; i < scan1.size(); i++) {
-        double d = scan1[i].d-scan2[i].d;
+        T d = scan1[i].d-scan2[i].d;
         if(!isnan(d)) {
             total_difference += fabs(d);
             valid_count++;
@@ -408,8 +406,8 @@ struct TwiddleResult{
 };
 
 template <class T>
-double abs_sum(vector<T> & v) {
-    double rv = 0;
+T abs_sum(vector<T> & v) {
+    T rv = 0;
     for(auto p : v) {
         rv += fabs(p);
     }
@@ -464,13 +462,13 @@ TwiddleResult<T> twiddle(vector<T> guess, std::function<T(const vector<T>)> f, T
 }
 
 template <class T = double>
-Pose<T> match_scans(vector<ScanLine<double>> scan1, vector<ScanLine<double>> scan2) {
-    auto error_function = [&scan1, &scan2](vector<double> params){
+Pose<T> match_scans(vector<ScanLine<T>> scan1, vector<ScanLine<T>> scan2) {
+    auto error_function = [&scan1, &scan2](vector<T> params){
         Pose<T> pose(params[0], params[1], params[2]);
         auto scan2b = untwist_scan(scan2,0.,0.,0.,pose);
         //cout << "scan2b:" << endl;
         //print_scan(scan2b);
-        double d = scan_difference(scan1, scan2b);
+        T d = scan_difference(scan1, scan2b);
         // cout << "difference: " << d << " pose: " << to_string(pose) << endl;
 
         return d;
@@ -515,13 +513,13 @@ void move_scan(
 }
 
 template <class T>
-double prorate(T x, T x1, T x2, T y1, T y2) {
+T prorate(T x, T x1, T x2, T y1, T y2) {
     return (x-x1) / (x2-x1) * (y2-y1) + y1;
 }
 
 template <class T>
 inline bool is_ccw(const Point2d<T> & p1, const Point2d<T> & p2) {
-    // it is cc2 if the cross product is positive
+    // it is ccw if the cross product is positive
     // here we only need to calculate the z term of the cross product
     return (p1.x*p2.y-p1.y*p2.x) >= 0;
 }
@@ -559,7 +557,8 @@ T scan_difference2(const vector<Point2d<T>> & scan1, const vector<Point2d<T>> & 
                 T dy = p.y-p1.y;
 
                 // tbd: what is the best difference metric?
-                total_difference += sqrt(dx*dx+dy*dy);
+                // total_difference += sqrt(dx*dx+dy*dy);
+                total_difference += fabs(dx)+fabs(dy);
                 ++points_compared;
                 found = true;
             } else {
