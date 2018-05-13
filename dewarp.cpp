@@ -57,7 +57,6 @@ template <class T=double>
 class Pose
 {
 private:
-    typedef Eigen::Matrix<T,2,1> Vector2T;
     T x;
     T y;
     T theta;
@@ -75,10 +74,6 @@ public:
     }
 
     Pose(T x = 0.0, T y=0.0, T theta = 0.0) : x(x), y(y), theta(theta) {
-        update_trig();
-    }
-
-    Pose(Vector2T p, T theta) : x(p(0)), y(p(1)), theta(theta) {
         update_trig();
     }
 
