@@ -256,24 +256,6 @@ vector<ScanLine<T>> scan_with_twist(vector<LineSegment<T>> & world, int scan_cou
     return output;
 }
 
-/*
-template <class T=double>
-vector<ScanLine<T>> scan_with_twist2(vector<LineSegment<T>> & world, int scan_count, Pose<T> initial_pose = Pose<T>(), T twist_x = 0, T twist_y = 0, T twist_theta = 0) {
-    vector<ScanLine<T>> output;
-    Pose<T> pose = initial_pose;
-    for(int i=0; i < scan_count; i++) {
-        T scanner_theta = (2. * EIGEN_PI) * i / scan_count;
-        T d = fake_laser_reading<>(pose, scanner_theta, world);
-        ScanLine<T> scan_line;
-        scan_line.theta = scanner_theta;
-        scan_line.d = d;
-        output.push_back(scan_line);
-        pose.move({twist_x/scan_count, twist_y/scan_count}, twist_theta/scan_count);
-    }
-    return output;
-}
-*/
-
 
 void print_world(vector<LineSegment<double>> & world) {
     for(auto segment : world) {
@@ -290,9 +272,7 @@ Stopwatch match_scans_timer;
 template <class T=double>
 vector<ScanLine<T>> untwist_scan(vector<ScanLine<T>> &twisted_readings, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
     untwist_timer.start();
-    //typedef Eigen::Matrix<T,2,1> Vector2T;
     int count = twisted_readings.size();
-    //cout << "count: " << count << endl;
     Pose<T> pose = initial_pose;
     vector<LineSegment<T>> world;
     world.reserve(count);
@@ -403,7 +383,7 @@ struct TwiddleResult{
 };
 
 template <class T>
-T abs_sum(vector<T> & v) {
+inline T abs_sum(vector<T> & v) {
     T rv = 0;
     for(auto p : v) {
         rv += fabs(p);
