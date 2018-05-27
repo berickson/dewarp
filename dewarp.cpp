@@ -39,7 +39,7 @@ public:
     duration<int64_t, std::ratio<1,1000000000>> elapsed_time = duration<int64_t, std::ratio<1,1000000000>>::zero();
     bool started = false;
     void start() {
-        ++ start_count;
+        ++start_count;
         start_time = system_clock::now();
         started = true;
     }
@@ -252,7 +252,7 @@ template <class T=double>
 vector<ScanLine<T>> scan_with_twist(vector<LineSegment<T>> & world, int scan_count, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
     vector<ScanLine<T>> output;
     Pose<T> pose = initial_pose;
-    for(int i=0; i < scan_count; i++) {
+    for(int i=0; i < scan_count; ++i) {
         T scanner_theta = 2*EIGEN_PI * i / scan_count;;
         T d = fake_laser_reading<>(pose, scanner_theta, world);
         output.emplace_back(scanner_theta, d);
@@ -288,7 +288,7 @@ vector<ScanLine<T>> untwist_scan(
     world.reserve(count);
     Point2d<T> p1 = {NAN, NAN};
     Point2d<T> p2 = {NAN, NAN};
-    for(size_t i = 0; i < twisted_readings.size()+1; i++) {
+    for(size_t i = 0; i < twisted_readings.size()+1; ++i) {
         T scan_theta = (T) i / count * 2. * EIGEN_PI;
         T d1 = twisted_readings[i%count].d;
         p1=p2;
@@ -304,7 +304,7 @@ vector<ScanLine<T>> untwist_scan(
     output.reserve(count);
 
     Pose<T> pose2(0,0,0);
-    for(int i = 0; i < count; i++) {
+    for(int i = 0; i < count; ++i) {
         T scan_theta = (T) i / count * 2 * EIGEN_PI;
         output.emplace_back(scan_theta, fake_laser_reading<T>(pose2, scan_theta, world));
     }
@@ -318,7 +318,7 @@ void test_fake_scan() {
     world.push_back(LineSegment<double>({-10,2}, {10,2}));
     world.push_back(LineSegment<double>({-10,-2}, {10,-2}));
     Pose<double> pose;
-    for( int i = 0; i < 360; i++) {
+    for( int i = 0; i < 360; ++i) {
         double theta = degrees2radians(i);
         double d = fake_laser_reading<double>(pose, theta, world);
         ScanLine<double> s = {theta,d};
@@ -386,7 +386,7 @@ inline T abs_sum(vector<T> & v) {
 
 // based loosely on https://martin-thoma.com/twiddle/
 template <class T>
-TwiddleResult<T> twiddle(vector<T> guess, std::function<T(const vector<T>)> f, T threshold = 0.003) {
+TwiddleResult<T> twiddle(vector<T> guess, std::function<T(const vector<T>&)> f, T threshold = 0.003) {
     
     // initialize parameters to guess
     vector<T> p = guess;
@@ -449,12 +449,6 @@ void move_scan(
             p.x = xy.x;
             p.y = xy.y;
             pose.Pose2World(p, p_new);
-            //moved_scan_line.theta = atan2(p_new.y, p_new.x);
-
-            //if(moved_scan_line.theta < 0) {
-            //    moved_scan_line.theta += 2 * EIGEN_PI;
-            //}
-            //moved_scan_line.d = sqrt(p_new.y*p_new.y+p_new.x*p_new.x);
         } else {
             p_new.x = NAN;
             p_new.y = NAN;
@@ -544,9 +538,8 @@ Pose<T> match_scans(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>>
     auto scan2_xy = get_scan_xy(scan2);
     vector<Point2d<T>> scan2b;
     scan2b.reserve(scan1.size());
-    auto error_function = [&scan1_xy, &scan2_xy, &scan2b](vector<T> params){
+    auto error_function = [&scan1_xy, &scan2_xy, &scan2b](const vector<T> & params){
         Pose<T> pose(params[0], params[1], params[2]);
-
         move_scan(scan2_xy, pose, scan2b);
         T d = scan_difference(scan1_xy, scan2b);
         //cout << "difference: " << d << " pose: " << to_string(pose) << endl;
@@ -604,10 +597,9 @@ void test_move_scan(bool trace = false) {
     move_scan(scan1_xy, pose2, scan2);
     if(trace) {
         cout << "original scan, moved scan" << endl;
-        for(unsigned i = 0; i < scan2.size(); i++) {
+        for(unsigned i = 0; i < scan2.size(); ++i) {
             cout << " -> "  <<scan1_xy[i].x <<  ", " << scan1_xy[i].y
-
-                << " -> "  <<scan2[i].x <<  ", " << scan2[i].y  << endl;
+                 << " -> "  <<scan2[i].x <<  ", " << scan2[i].y  << endl;
                 //<< radians2degrees(scan2[i].theta) << "°, " << scan2[i].d << endl;
         }
     }
@@ -626,12 +618,12 @@ int main(int, char**)
     test_match_n_scans<float>(1000);
 
 
-    test_prorate();
-    test_twiddle();
-    test_twiddle();
-    test_scan_with_twist();
-    test_intersection();
-    test_fake_scan();
+    //test_prorate();
+    //test_twiddle();
+    //test_twiddle();
+    //test_scan_with_twist();
+    //test_intersection();
+    //test_fake_scan();
 
     cout << "time untwisting: " << untwist_timer.get_elapsed_seconds() << endl;
     cout << "time moving: " << move_scan_timer.get_elapsed_seconds() << endl;
