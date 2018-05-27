@@ -239,7 +239,7 @@ T fake_laser_reading(const Pose<T> & pose, T theta, const vector<LineSegment<T>>
         }
     }
 
-    std::normal_distribution<T> random_scale(1.0, 0.02);
+    std::normal_distribution<T> random_scale(1.0, 0.01);
     return best_d * random_scale(random_engine);
 }
 
@@ -256,7 +256,7 @@ vector<ScanLine<T>> scan_with_twist(vector<LineSegment<T>> & world, int scan_cou
     return output;
 }
 
-
+/*
 template <class T=double>
 vector<ScanLine<T>> scan_with_twist2(vector<LineSegment<T>> & world, int scan_count, Pose<T> initial_pose = Pose<T>(), T twist_x = 0, T twist_y = 0, T twist_theta = 0) {
     vector<ScanLine<T>> output;
@@ -272,6 +272,7 @@ vector<ScanLine<T>> scan_with_twist2(vector<LineSegment<T>> & world, int scan_co
     }
     return output;
 }
+*/
 
 
 void print_world(vector<LineSegment<double>> & world) {
@@ -339,8 +340,9 @@ void test_fake_scan() {
 template <class T = double>
 vector<LineSegment<T>> get_world() {
     vector<LineSegment<T>> world;
-    world.push_back(LineSegment<T>({0,2}, {1,2}));
-    world.push_back(LineSegment<T>({-10,2}, {10,2}));
+    world.push_back(LineSegment<T>({-1,2}, {1,2}));
+    world.push_back(LineSegment<T>({1,2}, {1,1}));
+    world.push_back(LineSegment<T>({-10,3}, {10,3}));
     world.push_back(LineSegment<T>({-10,-3}, {10,-3}));
     world.push_back(LineSegment<T>({10,2}, {10,-3}));
     return world;
@@ -354,7 +356,7 @@ void test_scan_with_twist() {
     double twist_y = .1;
     double reading_count = 360;
     Pose<double> pose1;
-    auto twisted = scan_with_twist2(world, reading_count, pose1, twist_x, twist_y, twist_theta);
+    auto twisted = scan_with_twist(world, reading_count, twist_x, twist_y, twist_theta, pose1);
     auto untwisted = untwist_scan(twisted, twist_x, twist_y, twist_theta);
     cout << endl << endl << "twisted scan" << endl;
     print_scan(twisted);
@@ -654,9 +656,8 @@ void test_twiddle() {
 template <class T>
 void test_move_scan(bool trace = false) {
     auto world = get_world<T>();
-    Pose<T> pose1;
     Pose<T> pose2(0, 5, degrees2radians(3));
-    auto scan1 = scan_with_twist2<T>(world, 360, pose1);
+    auto scan1 = scan_with_twist<T>(world, 360);
     auto scan1_xy = get_scan_xy(scan1);
     vector<Point2d<T>> scan2;
     move_scan(scan1_xy, pose2, scan2);
