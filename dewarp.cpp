@@ -19,6 +19,11 @@ using namespace std::chrono;
 
 template <class T>
 struct Point2d {
+    Point2d() {
+        x = NAN;
+        y = NAN;
+    }
+    Point2d(T x, T y) : x(x), y(y) {}
     T x;
     T y;
     float norm() const {
@@ -250,7 +255,7 @@ vector<ScanLine<T>> scan_with_twist(vector<LineSegment<T>> & world, int scan_cou
     for(int i=0; i < scan_count; i++) {
         T scanner_theta = 2*EIGEN_PI * i / scan_count;;
         T d = fake_laser_reading<>(pose, scanner_theta, world);
-        output.push_back({scanner_theta, d});
+        output.emplace_back(scanner_theta, d);
         pose.move({twist_x/scan_count, twist_y/scan_count}, twist_theta/scan_count);
     }
     return output;
@@ -270,7 +275,12 @@ Stopwatch scan_difference_timer;
 Stopwatch match_scans_timer;
 
 template <class T=double>
-vector<ScanLine<T>> untwist_scan(vector<ScanLine<T>> &twisted_readings, T twist_x, T twist_y, T twist_theta, Pose<T> initial_pose = Pose<T>()) {
+vector<ScanLine<T>> untwist_scan(
+        vector<ScanLine<T>> &twisted_readings, 
+        T twist_x, 
+        T twist_y, 
+        T twist_theta, 
+        Pose<T> initial_pose = Pose<T>()) {
     untwist_timer.start();
     int count = twisted_readings.size();
     Pose<T> pose = initial_pose;
@@ -284,7 +294,7 @@ vector<ScanLine<T>> untwist_scan(vector<ScanLine<T>> &twisted_readings, T twist_
         p1=p2;
         pose.Pose2World({cos(scan_theta)*d1, sin(scan_theta)*d1}, p2);
         if(! isnan(p1.x) && !isnan(p2.x)) {
-          world.push_back(LineSegment<T>(p1, p2));
+          world.emplace_back(p1, p2);
         }
         pose.move({twist_x/count, twist_y/count}, twist_theta/count);
     }
@@ -296,7 +306,7 @@ vector<ScanLine<T>> untwist_scan(vector<ScanLine<T>> &twisted_readings, T twist_
     Pose<T> pose2(0,0,0);
     for(int i = 0; i < count; i++) {
         T scan_theta = (T) i / count * 2 * EIGEN_PI;
-        output.push_back(ScanLine<T>(scan_theta, fake_laser_reading<T>(pose2, scan_theta, world)));
+        output.emplace_back(scan_theta, fake_laser_reading<T>(pose2, scan_theta, world));
     }
     untwist_timer.stop();
     return output;
@@ -320,11 +330,11 @@ void test_fake_scan() {
 template <class T = double>
 vector<LineSegment<T>> get_world() {
     vector<LineSegment<T>> world;
-    world.push_back(LineSegment<T>({-1,2}, {1,2}));
-    world.push_back(LineSegment<T>({1,2}, {1,1}));
-    world.push_back(LineSegment<T>({-10,3}, {10,3}));
-    world.push_back(LineSegment<T>({-10,-3}, {10,-3}));
-    world.push_back(LineSegment<T>({10,2}, {10,-3}));
+    world.push_back({{-1,2}, {1,2}});
+    world.push_back({{1,2}, {1,1}});
+    world.push_back({{-10,3}, {10,3}});
+    world.push_back({{-10,-3}, {10,-3}});
+    world.push_back({{10,2}, {10,-3}});
     return world;
 }
 
@@ -359,23 +369,6 @@ void test_intersection() {
     }
 }
 
-template<class T = double>
-T scan_difference(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> & scan2) {
-    T total_difference = 0;
-    size_t valid_count = 0;
-    for(unsigned i = 0; i < scan1.size(); i++) {
-        T d = scan1[i].d-scan2[i].d;
-        if(!isnan(d)) {
-            total_difference += fabs(d);
-            valid_count++;
-        }
-    }
-    if(valid_count == 0) {
-        return NAN;
-    }
-    return total_difference / valid_count;
-}
-
 template <class T>
 struct TwiddleResult{
     vector<T> p;
@@ -402,10 +395,11 @@ TwiddleResult<T> twiddle(vector<T> guess, std::function<T(const vector<T>)> f, T
     // potential changes
     auto dp = std::vector<T>(guess.size(), 0.01);
     const T growth_rate = 1.5;
+    const auto p_size = p.size();
 
 
     while(abs_sum(dp) > threshold) {
-        for(size_t i = 0; i< p.size(); i++) {
+        for(size_t i = 0; i< p_size; ++i) {
             p[i] += dp[i];
             T error = f(p);
 
@@ -437,25 +431,6 @@ TwiddleResult<T> twiddle(vector<T> guess, std::function<T(const vector<T>)> f, T
     rv.error = best_error;
     return rv;
 }
-
-template <class T = double>
-Pose<T> match_scans(vector<ScanLine<T>> scan1, vector<ScanLine<T>> scan2) {
-    auto error_function = [&scan1, &scan2](vector<T> params){
-        Pose<T> pose(params[0], params[1], params[2]);
-        auto scan2b = untwist_scan(scan2,0.,0.,0.,pose);
-        //cout << "scan2b:" << endl;
-        //print_scan(scan2b);
-        T d = scan_difference(scan1, scan2b);
-        // cout << "difference: " << d << " pose: " << to_string(pose) << endl;
-
-        return d;
-    };
-
-    TwiddleResult<T> r = twiddle<T>({0,0,0}, error_function);
-    Pose<T> match(r.p[0], r.p[1], r.p[2]);
-    return match;
-}
-
 
 
 template <class T = double>
@@ -504,7 +479,7 @@ inline bool is_ccw(const Point2d<T> & p1, const Point2d<T> & p2) {
 // computes scan difference of scans without requiring matching equally spaced scan angles
 // tbd whether there is a requirement for increasing scan angles
 template<class T>
-T scan_difference2(const vector<Point2d<T>> & scan1, const vector<Point2d<T>> & scan2) {
+T scan_difference(const vector<Point2d<T>> & scan1, const vector<Point2d<T>> & scan2) {
     
     scan_difference_timer.start();
     // walk around scan1, finding correspondences in scan2
@@ -557,13 +532,13 @@ template <class T> vector<Point2d<T>> get_scan_xy(const vector<ScanLine<T>> & sc
     vector<Point2d<T>> scan_xy;
     scan_xy.reserve(scan.size());
     for(auto & scan_line : scan) {
-        scan_xy.push_back({scan_line.d * cos(scan_line.theta),scan_line.d * sin(scan_line.theta) });
+        scan_xy.emplace_back(scan_line.d * cos(scan_line.theta),scan_line.d * sin(scan_line.theta));
     }
     return scan_xy;
 }
 
 template <class T = double>
-Pose<T> match_scans2(vector<ScanLine<T>> & scan1, vector<ScanLine<T>> & scan2) {
+Pose<T> match_scans(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>> & scan2) {
     match_scans_timer.start();
     auto scan1_xy = get_scan_xy(scan1);
     auto scan2_xy = get_scan_xy(scan2);
@@ -572,9 +547,8 @@ Pose<T> match_scans2(vector<ScanLine<T>> & scan1, vector<ScanLine<T>> & scan2) {
     auto error_function = [&scan1_xy, &scan2_xy, &scan2b](vector<T> params){
         Pose<T> pose(params[0], params[1], params[2]);
 
-        //vector<ScanLine<T>> scan2b;
         move_scan(scan2_xy, pose, scan2b);
-        T d = scan_difference2(scan1_xy, scan2b);
+        T d = scan_difference(scan1_xy, scan2b);
         //cout << "difference: " << d << " pose: " << to_string(pose) << endl;
 
         return d;
@@ -588,7 +562,7 @@ Pose<T> match_scans2(vector<ScanLine<T>> & scan1, vector<ScanLine<T>> & scan2) {
 
 
 template<class T = double>
-void test_match_scans2() {
+void test_match_scans() {
     size_t n_points = 360;
     auto world = get_world<T>();
 
@@ -601,7 +575,7 @@ void test_match_scans2() {
     auto scan1 = scan_with_twist<T>(world, n_points, 0, 0, 0, pose1);
     auto scan2 = scan_with_twist<T>(world, n_points, 0, 0, 0, pose2);
 
-    auto matched_pose = match_scans2(scan1, scan2);
+    auto matched_pose = match_scans(scan1, scan2);
 
     cout << "actual pose: " << to_string(pose2)
          << " -> matched pose: " << to_string(matched_pose) << endl;
@@ -612,19 +586,6 @@ void test_prorate() {
     cout << "prorate result: " << y << endl;
 }
 
-void test_match_scans() {
-    size_t n_points = 360;
-    auto world = get_world();
-    Pose<double> pose1;
-    Pose<double> pose2(.27, -.45, degrees2radians(45));
-    auto scan1 = scan_with_twist<double>(world, n_points, 0, 0, 0, pose1);
-    auto scan2 = scan_with_twist<double>(world, n_points, 0, 0, 0, pose2);
-
-    auto matched_pose = match_scans(scan1, scan2);
-
-    cout << "actual pose: " << to_string(pose2) << endl;
-    cout << "match pose : " << to_string(matched_pose) << endl;
-}
 
 void test_twiddle() {
     auto lambda = [](std::vector<double> v)->double{return fabs(v[0]-3)+fabs(v[1]-5) + fabs(v[2]);};
@@ -655,26 +616,22 @@ void test_move_scan(bool trace = false) {
 template <class T>
 void test_match_n_scans(size_t n) {
     cout << "matching  " << n << " random scans" << endl;
-    for(int i = 0; i < 1000; ++i) test_match_scans2<T>();
+    for(size_t i = 0; i < n; ++i) test_match_scans<T>();
     cout << "done matching  " << n << " random scans" << endl;
 }
 
 int main(int, char**)
 {
-    //test_prorate();
 
-    //test_move_scan<float>(true);
-    //for(int i = 0; i < 100000; ++i) test_move_scan<float>();
     test_match_n_scans<float>(1000);
 
 
-    //test_twiddle();
-    //return 0;
-    //test_match_scans();
-    //test_twiddle();
-    //test_scan_with_twist();
-    //test_intersection();
-    // test_fake_scan();
+    test_prorate();
+    test_twiddle();
+    test_twiddle();
+    test_scan_with_twist();
+    test_intersection();
+    test_fake_scan();
 
     cout << "time untwisting: " << untwist_timer.get_elapsed_seconds() << endl;
     cout << "time moving: " << move_scan_timer.get_elapsed_seconds() << endl;
