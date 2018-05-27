@@ -1,17 +1,19 @@
 # TODO
-- Performance:
-  remove atan2 from difference: Keep scans in x,y format, use x/y or y/x for sorting angles 
 
 - Integrate with ROS
     - input scans, output scans, processing progress
-- Investigate vectorization for performance
-- Better hill climbing
-    - change twiddle into hill-climb
-    - try simulated annealing
-    - idea - why not have a "leave this hill" in hill climbing that goes to other side of minimum? Maybe it only works in 1d? 
+- Reduce looping while matching scans
+- Handle edge cases in scan matching
+    - occluded / exposed regions
+- Scoring should take into account errors from distances - use probabilities
+- Test with more sophisticated world examples
+- Simulate robot going through path with error
 
 
 # Done
+- Performance:
+  remove atan2 from difference: Keep scans in x,y format, use x/y or y/x for sorting angles 
+- Vectorization for performance
 - Basic scan matching
 - untwisting distortions from robot motion
 - Make scan matching faster
