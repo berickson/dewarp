@@ -1001,6 +1001,6 @@ actual pose: -0.098, 0.864, -1.0° -> matched pose: -0.094, 0.863, -1.0°
 actual pose: 0.084, 0.184, 2.9° -> matched pose: 0.088, 0.188, 3.0°
 done matching  1000 random scans
 time untwisting: 0
-time moving: 0.236205
-time diffing: 1.71036 count: 170866
-total time matching: 1.9888
+time moving: 0.181812
+time diffing: 1.68309 count: 170866
+total time matching: 1.89804

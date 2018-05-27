@@ -312,21 +312,6 @@ vector<ScanLine<T>> untwist_scan(
     return output;
 }
 
-void test_fake_scan() {
-    vector<ScanLine<double>> scan;
-    vector<LineSegment<double>> world;
-    world.push_back(LineSegment<double>({-10,2}, {10,2}));
-    world.push_back(LineSegment<double>({-10,-2}, {10,-2}));
-    Pose<double> pose;
-    for( int i = 0; i < 360; ++i) {
-        double theta = degrees2radians(i);
-        double d = fake_laser_reading<double>(pose, theta, world);
-        ScanLine<double> s = {theta,d};
-        scan.push_back(s);
-    }
-    print_scan(scan);
-}
-
 template <class T = double>
 vector<LineSegment<T>> get_world() {
     vector<LineSegment<T>> world;
@@ -338,36 +323,6 @@ vector<LineSegment<T>> get_world() {
     return world;
 }
 
-
-void test_scan_with_twist() {
-    auto world = get_world();
-    double twist_theta = degrees2radians(5);
-    double twist_x = .2;
-    double twist_y = .1;
-    double reading_count = 360;
-    Pose<double> pose1;
-    auto twisted = scan_with_twist(world, reading_count, twist_x, twist_y, twist_theta, pose1);
-    auto untwisted = untwist_scan(twisted, twist_x, twist_y, twist_theta);
-    cout << endl << endl << "twisted scan" << endl;
-    print_scan(twisted);
-    cout << endl << endl << "untwisted scan" << endl;
-    print_scan(untwisted);
-}
-
-void test_intersection() {
-    double dx = -2.89707;
-    double dy = -3;
-    Eigen::Vector2d v{dx,dy};
-    v = v/v.norm();
-    auto s = LineSegment<>({-2.89755,-3},{-2.89707,-3});
-    auto l = Line<double>::from_points({0,0},{v(0), v(1)});
-    auto p = s.intersection(l);
-    cout << "intersection at:" << p.x << ", " << p.y << endl;
-    if((sign_of(p.x)==sign_of(dx)) && (sign_of(p.y)==sign_of(dy))) {
-    
-    cout << "signs ok";
-    }
-}
 
 template <class T>
 struct TwiddleResult{
@@ -611,6 +566,53 @@ void test_match_n_scans(size_t n) {
     for(size_t i = 0; i < n; ++i) test_match_scans<T>();
     cout << "done matching  " << n << " random scans" << endl;
 }
+
+void test_fake_scan() {
+    vector<ScanLine<double>> scan;
+    vector<LineSegment<double>> world;
+    world.push_back(LineSegment<double>({-10,2}, {10,2}));
+    world.push_back(LineSegment<double>({-10,-2}, {10,-2}));
+    Pose<double> pose;
+    for( int i = 0; i < 360; ++i) {
+        double theta = degrees2radians(i);
+        double d = fake_laser_reading<double>(pose, theta, world);
+        ScanLine<double> s = {theta,d};
+        scan.push_back(s);
+    }
+    print_scan(scan);
+}
+
+void test_scan_with_twist() {
+    auto world = get_world();
+    double twist_theta = degrees2radians(5);
+    double twist_x = .2;
+    double twist_y = .1;
+    double reading_count = 360;
+    Pose<double> pose1;
+    auto twisted = scan_with_twist(world, reading_count, twist_x, twist_y, twist_theta, pose1);
+    auto untwisted = untwist_scan(twisted, twist_x, twist_y, twist_theta);
+    cout << endl << endl << "twisted scan" << endl;
+    print_scan(twisted);
+    cout << endl << endl << "untwisted scan" << endl;
+    print_scan(untwisted);
+}
+
+void test_intersection() {
+    double dx = -2.89707;
+    double dy = -3;
+    Eigen::Vector2d v{dx,dy};
+    v = v/v.norm();
+    auto s = LineSegment<>({-2.89755,-3},{-2.89707,-3});
+    auto l = Line<double>::from_points({0,0},{v(0), v(1)});
+    auto p = s.intersection(l);
+    cout << "intersection at:" << p.x << ", " << p.y << endl;
+    if((sign_of(p.x)==sign_of(dx)) && (sign_of(p.y)==sign_of(dy))) {
+    
+    cout << "signs ok";
+    }
+}
+
+
 
 int main(int, char**)
 {
