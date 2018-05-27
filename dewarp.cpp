@@ -12,6 +12,8 @@
 #define degrees2radians(theta) ((theta) * EIGEN_PI / 180.)
 #define radians2degrees(theta) ((theta) * 180. / EIGEN_PI)
 
+size_t g_wrap_count = 0;
+
 std::default_random_engine random_engine;
 
 using namespace std;
@@ -150,7 +152,12 @@ void print_scan(vector<ScanLine<T>> scan) {
 }
 
 template <class T = double>
-bool is_between(T a, T b, T c, T e=1E-5) {
+inline bool is_between(T a, T b, T c) {
+    return (b <= a && a <=c) || (c <= a && a <= b);
+}
+
+template <class T = double>
+inline bool is_between(T a, T b, T c, T e) {
     return (b-e <= a && a <=c+e) || (c-e <= a && a <= b+e);
 }
 
@@ -189,6 +196,8 @@ class LineSegment {
     public:
     Point2d<T> p1;
     Point2d<T> p2;
+    LineSegment(T x1, T y1, T x2, T y2) : p1(x1, y1), p2(x2, y2) {      
+    }
     LineSegment(Point2d<T> p1, Point2d<T> p2) : p1(p1), p2(p2) {      
     }
 
@@ -200,7 +209,7 @@ class LineSegment {
     Point2d<T> intersection(Line<T> l2) {
         auto l1 = Line<T>::from_points(p1,p2);
         Point2d<T> p = l1.intersection(l2);
-        if(is_between<T>(p.x,p1.x,p2.x)) {
+        if(is_between<T>(p.x, p1.x, p2.x)) {
             return p;
         } else {
             return {NAN, NAN};
@@ -315,11 +324,11 @@ vector<ScanLine<T>> untwist_scan(
 template <class T = double>
 vector<LineSegment<T>> get_world() {
     vector<LineSegment<T>> world;
-    world.push_back({{-1,2}, {1,2}});
-    world.push_back({{1,2}, {1,1}});
-    world.push_back({{-10,3}, {10,3}});
-    world.push_back({{-10,-3}, {10,-3}});
-    world.push_back({{10,2}, {10,-3}});
+    world.emplace_back(-1, 2, 1, 2);
+    world.emplace_back(1, 2, 1, 1);
+    world.emplace_back(-10, 3, 10, 3);
+    world.emplace_back(-10, -3, 10, -3);
+    world.emplace_back(10, 2, 10, -3);
     return world;
 }
 
@@ -464,6 +473,7 @@ T scan_difference(const vector<Point2d<T>> & scan1, const vector<Point2d<T>> & s
             } else {
                 // increment line2 rays and wrap around if necessary
                 if(++i2a == scan2_size) {
+                    ++g_wrap_count;
                     i2a = 0;
                 }
                 if(++i2b == scan2_size) {
@@ -569,14 +579,13 @@ void test_match_n_scans(size_t n) {
 void test_fake_scan() {
     vector<ScanLine<double>> scan;
     vector<LineSegment<double>> world;
-    world.push_back(LineSegment<double>({-10,2}, {10,2}));
-    world.push_back(LineSegment<double>({-10,-2}, {10,-2}));
+    world.emplace_back(-10, 2, 10, 2);
+    world.emplace_back(-10, -2, 10,-2);
     Pose<double> pose;
     for( int i = 0; i < 360; ++i) {
         double theta = degrees2radians(i);
         double d = fake_laser_reading<double>(pose, theta, world);
-        ScanLine<double> s = {theta,d};
-        scan.push_back(s);
+        scan.emplace_back(theta, d);
     }
     print_scan(scan);
 }
@@ -629,6 +638,7 @@ int main(int, char**)
     cout << "time moving: " << move_scan_timer.get_elapsed_seconds() << endl;
     cout << "time diffing: " << scan_difference_timer.get_elapsed_seconds() << " count: " << scan_difference_timer.start_count<< endl;
     cout << "total time matching: " << match_scans_timer.get_elapsed_seconds() << endl;
+    cout << "total wrap count: " << g_wrap_count << endl;
     return 0;
 
 }
