@@ -325,7 +325,7 @@ vector<LineSegment<T>> get_world() {
 
 
 template <class T>
-struct TwiddleResult{
+struct MinimizeResult{
     vector<T> p;
     T error;
 };
@@ -341,7 +341,7 @@ inline T abs_sum(vector<T> & v) {
 
 // based loosely on https://martin-thoma.com/twiddle/
 template <class T>
-TwiddleResult<T> twiddle(vector<T> guess, std::function<T(const vector<T>&)> f, T threshold = 0.003) {
+MinimizeResult<T> minimize(vector<T> guess, std::function<T(const vector<T>&)> f, T threshold = 0.003) {
     
     // initialize parameters to guess
     vector<T> p = guess;
@@ -380,8 +380,7 @@ TwiddleResult<T> twiddle(vector<T> guess, std::function<T(const vector<T>&)> f, 
             }
         }
     }
-    //cout << "twiddle done" << endl;
-    TwiddleResult<T> rv;
+    MinimizeResult<T> rv;
     rv.p = p;
     rv.error = best_error;
     return rv;
@@ -502,7 +501,7 @@ Pose<T> match_scans(const vector<ScanLine<T>> & scan1, const vector<ScanLine<T>>
         return d;
     };
 
-    TwiddleResult<T> r = twiddle<T>({0,0,0}, error_function);
+    MinimizeResult<T> r = minimize<T>({0,0,0}, error_function);
     Pose<T> match(r.p[0], r.p[1], r.p[2]);
     match_scans_timer.stop();
     return match;
@@ -535,9 +534,9 @@ void test_prorate() {
 }
 
 
-void test_twiddle() {
+void test_minimize() {
     auto lambda = [](std::vector<double> v)->double{return fabs(v[0]-3)+fabs(v[1]-5) + fabs(v[2]);};
-    auto rv = twiddle<double>({0,0,0}, lambda, 1E-10);
+    auto rv = minimize<double>({0,0,0}, lambda, 1E-10);
     cout << rv.p[0] << ", " << rv.p[1] << ", " << rv.p[2] << " error: " << rv.error << endl;
         
 }
@@ -621,8 +620,7 @@ int main(int, char**)
 
 
     //test_prorate();
-    //test_twiddle();
-    //test_twiddle();
+    //test_minimize();
     //test_scan_with_twist();
     //test_intersection();
     //test_fake_scan();
